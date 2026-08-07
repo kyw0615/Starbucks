@@ -35,7 +35,10 @@ jobs:
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
 
+      # enablement: Pages가 꺼져 있거나 브랜치 배포로 설정돼 있으면 워크플로 배포로 전환 시도
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
