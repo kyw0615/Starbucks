@@ -2,107 +2,8 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { Download, Share2, Calendar, Clock, Briefcase, Smartphone, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { toBlob } from 'html-to-image';
 
-const DEFAULT_INPUT = `출근
-퇴근
-근태코드
-06/21(일)
-07:00
-14:00
-정상
-06/22(월)
-13:00
-18:30
-정상
-06/23(화)
-15:30
-21:00
-정상
-06/24(수)
-정규휴일
-06/25(목)
-07:00
-13:30
-정상
-06/26(금)
-07:00
-12:30
-정상
-06/27(토)
-09:30
-15:00
-정상
-06/28(일)
-정규휴일
-06/29(월)
-11:00
-18:30
-정상
-06/30(화)
-07:00
-15:00
-정상
-07/01(수)
-정규휴일
-07/02(목)
-07:00
-13:00
-정상
-07/03(금)
-10:30
-18:00
-정상
-07/04(토)
-07:00
-14:00
-정상
-07/05(일)
-정규휴일
-07/06(월)
-07:00
-12:30
-정상
-07/07(화)
-07:00
-12:30
-정상
-07/08(수)
-07:00
-13:00
-정상
-07/09(목)
-정규휴일
-07/10(금)
-10:30
-17:30
-정상
-07/11(토)
-14:00
-21:00
-정상
-07/12(일)
-정규휴일
-07/13(월)
-10:30
-17:30
-정상
-07/14(화)
-15:30
-21:00
-정상
-07/15(수)
-정규휴일
-07/16(목)
-정규휴일
-07/17(금)
-법정휴일
-07/18(토)
-07:00
-14:00
-정상
-07/19(일)
-07:00
-14:30
-정상`;
+// 첫 방문 시 빈 상태로 시작한다 (예시 데이터 없음)
+const DEFAULT_INPUT = '';
 
 const MONTH_NAMES_EN = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -213,27 +114,40 @@ type CodeStyle = {
   dayColor: string | null; // null = 요일 기본색
 };
 
+// 스타벅스 팔레트
+const SB = {
+  green: '#00704A',       // Starbucks Green
+  deep: '#1E3932',        // House Green (진한 배경/제목)
+  accent: '#006241',
+  mist: '#D4E9E2',        // 연한 그린
+  cream: '#F7F5EF',       // 크림 배경
+  gold: '#CBA258',
+  ink: '#1E3932',
+  muted: '#8C9A93',
+  red: '#C8102E',         // 법정휴일 표시색
+};
+
 // 휴가로 볼 근태코드 (셀 중앙에 😎 표시)
 const VACATION_CODES = ['휴가', '연차'];
-// 근무일 중 붉게 처리할 근태코드
+// 날짜 숫자를 붉게 표시할 근태코드 (근무 여부와 무관)
 const LEGAL_HOLIDAY_MARK = '법정휴일';
 
-const WORK_STYLE: CodeStyle = {
-  kind: 'work', cellBg: '#ffffff', accent: '#1e40af', dayColor: null,
-};
-const WORK_LEGAL_STYLE: CodeStyle = {
-  kind: 'work', cellBg: '#fef2f2', accent: '#b91c1c', dayColor: '#dc2626',
-};
-const OFF_BASE = { cellBg: '#f3f4f6', accent: '#6b7280', dayColor: 'rgb(200,200,200)' };
-
 function getEntryStyle(entry: Entry): CodeStyle {
+  // 법정휴일이면 근무든 휴무든 날짜 숫자만 붉게
+  const legalRed = entry.code.includes(LEGAL_HOLIDAY_MARK) ? SB.red : null;
+
   // 출퇴근 시간이 모두 있으면 근무일
   if (entry.start && entry.end) {
-    return entry.code.includes(LEGAL_HOLIDAY_MARK) ? WORK_LEGAL_STYLE : WORK_STYLE;
+    return { kind: 'work', cellBg: '#ffffff', accent: SB.green, dayColor: legalRed };
   }
   // 시간이 없으면 휴일 — 휴가 계열만 이모지로 구분
   const isVacation = VACATION_CODES.some(c => entry.code.includes(c));
-  return { kind: isVacation ? 'vacation' : 'holiday', ...OFF_BASE };
+  return {
+    kind: isVacation ? 'vacation' : 'holiday',
+    cellBg: '#EFEFEA',
+    accent: SB.muted,
+    dayColor: legalRed ?? 'rgb(190,190,185)',
+  };
 }
 
 // 오늘 기준 1주 전(일요일 스냅) ~ 5주(35일) 고정 윈도우
@@ -341,7 +255,7 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
       style={{
         width: `${width}px`,
         height: `${height}px`,
-        background: 'linear-gradient(135deg, #fefcf8 0%, #f5f1ea 100%)',
+        background: `linear-gradient(160deg, ${SB.cream} 0%, #EEF4F1 100%)`,
         fontFamily: '"Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif',
         position: 'relative',
         boxSizing: 'border-box',
@@ -359,13 +273,13 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
         flexDirection: 'column',
         justifyContent: 'flex-end',
       }}>
-        <div style={{ fontSize: `${fs.monthSub}px`, color: '#9ca3af', fontWeight: 500, letterSpacing: `${4 * s}px` }}>
+        <div style={{ fontSize: `${fs.monthSub}px`, color: SB.green, fontWeight: 700, letterSpacing: `${4 * s}px` }}>
           {headerYear}
         </div>
-        <div style={{ fontSize: `${fs.monthBig}px`, fontWeight: 800, lineHeight: 1, marginTop: `${8 * s}px`, color: '#111827', letterSpacing: `${-2 * s}px` }}>
+        <div style={{ fontSize: `${fs.monthBig}px`, fontWeight: 800, lineHeight: 1, marginTop: `${8 * s}px`, color: SB.deep, letterSpacing: `${-2 * s}px` }}>
           {headerEn}
         </div>
-        <div style={{ fontSize: `${fs.monthSub}px`, color: '#6b7280', fontWeight: 600, marginTop: `${6 * s}px` }}>
+        <div style={{ fontSize: `${fs.monthSub}px`, color: SB.accent, fontWeight: 600, marginTop: `${6 * s}px` }}>
           {headerKr}
         </div>
       </div>
@@ -379,8 +293,8 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
         height: `${weekdayBarHeight}px`,
         display: 'flex',
         alignItems: 'center',
-        borderTop: `${Math.max(1, Math.round(2 * s))}px solid #1f2937`,
-        borderBottom: '1px solid #d1d5db',
+        borderTop: `${Math.max(2, Math.round(3 * s))}px solid ${SB.green}`,
+        borderBottom: `1px solid ${SB.mist}`,
       }}>
         {WEEKDAYS_KR.map((w, i) => (
           <div key={w} style={{
@@ -388,7 +302,7 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
             textAlign: 'center',
             fontSize: `${fs.weekday}px`,
             fontWeight: 700,
-            color: i === 0 ? '#dc2626' : i === 6 ? '#2563eb' : '#374151',
+            color: i === 0 ? SB.red : i === 6 ? SB.green : SB.deep,
             letterSpacing: `${2 * s}px`,
           }}>
             {w}
@@ -426,9 +340,9 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
                 top: `${cellTop}px`,
                 width: `${cellWidth}px`,
                 height: `${cellHeight}px`,
-                background: '#fafafa',
+                background: 'rgba(255,255,255,0.35)',
                 borderRadius: `${12 * cs}px`,
-                border: '1px solid #f1f5f9',
+                border: `1px solid ${SB.mist}`,
                 boxSizing: 'border-box',
                 opacity: 0.55,
               }}>
@@ -438,7 +352,7 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
                   left: `${innerPad}px`,
                   fontSize: `${fs.dayNum}px`,
                   fontWeight: 700,
-                  color: '#cbd5e1',
+                  color: 'rgba(30,57,50,0.22)',
                   lineHeight: 1,
                 }}>
                   {day}
@@ -448,7 +362,9 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
           }
 
           // entry가 없어도 style은 항상 유효한 값을 갖도록 (배경색 계산에만 사용)
-          const style = entry ? getEntryStyle(entry) : WORK_STYLE;
+          const style: CodeStyle = entry
+            ? getEntryStyle(entry)
+            : { kind: 'work', cellBg: '#ffffff', accent: SB.green, dayColor: null };
           const kind = entry ? style.kind : null;
           const isWork = kind === 'work';
           const isHoliday = kind === 'holiday';
@@ -456,14 +372,14 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
 
           let bg = '#ffffff';
           if (entry) bg = style.cellBg;
-          else if (dow === 0 || dow === 6) bg = '#fafafa';
+          else if (dow === 0 || dow === 6) bg = 'rgba(255,255,255,0.55)';
 
           const workMins = isWork ? calcWorkMinutes(entry.start, entry.end) : 0;
 
           // 날짜 색: 코드별 지정색 우선, 없으면 요일 기본색(일=빨강, 토=파랑, 평일=검정)
           const dayColor = (entry && style.dayColor) ? style.dayColor :
-                           dow === 0 ? '#dc2626' :
-                           dow === 6 ? '#2563eb' : '#111827';
+                           dow === 0 ? SB.red :
+                           dow === 6 ? SB.green : SB.deep;
 
           return (
             <div key={idx} style={{
@@ -474,7 +390,7 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
               height: `${cellHeight}px`,
               background: bg,
               borderRadius: `${12 * cs}px`,
-              border: '1px solid #e5e7eb',
+              border: `1px solid ${SB.mist}`,
               boxSizing: 'border-box',
               overflow: 'hidden',
             }}>
@@ -541,9 +457,9 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
                     marginTop: `${6 * cs}px`,
                     fontSize: `${fs.workHours}px`,
                     fontWeight: 700,
-                    color: '#111827',
+                    color: SB.deep,
                     fontVariantNumeric: 'tabular-nums',
-                    opacity: 0.7,
+                    opacity: 0.62,
                   }}>
                     {formatHours(workMins)}
                   </div>
@@ -674,8 +590,13 @@ export default function App() {
     return `schedule-${parts.join('-')}`;
   }, [focusMonths]);
 
+  // 전체 삭제 — 되돌릴 수 없으므로 확인을 받는다
   const handleReset = () => {
-    setInput(DEFAULT_INPUT);
+    if (!input.trim()) return;
+    const ok = window.confirm(
+      `입력한 스케줄 ${Object.keys(schedule).length}일치가 모두 삭제됩니다.\n삭제된 데이터는 되돌릴 수 없습니다.\n\n계속할까요?`
+    );
+    if (ok) setInput('');
   };
 
   // 새 주간 스케줄을 기존 데이터 맨 아래에 이어붙임
@@ -739,106 +660,90 @@ export default function App() {
   const previewHeight = device.height * previewScale;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-stone-100 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* 헤더 */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-              <Calendar className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900">스케줄 캘린더 메이커</h1>
+    <div className="min-h-screen bg-[#F7F5EF] pb-10">
+      {/* 상단 바 — 스타벅스 그린 */}
+      <header className="bg-[#00704A] text-white">
+        <div className="max-w-7xl mx-auto px-4 py-4 md:py-5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-white/15 ring-1 ring-white/30 flex items-center justify-center shrink-0">
+            <Calendar className="w-[18px] h-[18px] text-white" />
           </div>
-          <p className="text-slate-600 text-sm md:text-base">알바 근무표를 깔끔한 달력 배경화면으로 변환하세요 · 두 달에 걸친 일정도 자동 표시</p>
+          <h1 className="text-lg md:text-2xl font-bold tracking-tight">스타벅스 스케줄 달력 생성</h1>
         </div>
+      </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* 입력 패널 */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <label className="font-semibold text-slate-900 flex items-center gap-2">
-                  <Briefcase className="w-4 h-4" />
-                  스케줄 데이터
-                </label>
-                <button
-                  onClick={handleReset}
-                  className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1"
-                >
-                  <RefreshCw className="w-3 h-3" /> 예시로 초기화
-                </button>
-              </div>
+      <div className="max-w-7xl mx-auto px-4 pt-5">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+          {/* ── 좌측 패널 ── */}
+          <div className="lg:col-span-2 space-y-5">
+
+            {/* 1) 스케줄 입력 — 최상단 */}
+            <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
+              <label className="font-bold text-[#1E3932] flex items-center gap-2 mb-3">
+                <Briefcase className="w-4 h-4 text-[#00704A]" />
+                스케줄 입력
+              </label>
               <textarea
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                className="w-full h-72 p-3 border border-slate-200 rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-                placeholder="스케줄 데이터를 붙여넣으세요"
+                value={weekInput}
+                onChange={e => setWeekInput(e.target.value)}
+                className="w-full h-40 p-3 bg-[#F7F5EF] border border-[#D4E9E2] rounded-xl font-mono text-base leading-relaxed text-[#1E3932] placeholder:text-[#8C9A93] focus:outline-none focus:ring-2 focus:ring-[#00704A] focus:border-transparent resize-none"
+                placeholder={"근무표를 붙여넣으세요\n\n08/11(화)\n07:00\n14:00\n정상"}
                 spellCheck={false}
               />
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-xs text-slate-400">
-                  {savedAt ? `자동 저장됨 · ${savedAt}` : '입력하면 자동 저장됩니다'}
-                </span>
-                <span className="text-xs text-slate-400">{Object.keys(schedule).length}일 인식됨</span>
-              </div>
+              <button
+                onClick={handleAddWeek}
+                disabled={!weekInput.trim()}
+                className="mt-3 w-full bg-[#00704A] hover:bg-[#006241] active:bg-[#1E3932] disabled:bg-[#C9D6D0] disabled:cursor-not-allowed text-white font-bold py-3 rounded-full transition-colors"
+              >
+                달력에 추가
+              </button>
+              <p className="text-[11px] text-[#8C9A93] mt-2.5 leading-relaxed">
+                이미 있는 날짜를 다시 넣으면 새 내용으로 바뀝니다. 출퇴근 시간이 없으면 휴무로 처리됩니다.
+              </p>
+            </section>
 
-              {/* 이번 주 추가 — 새 주간 스케줄만 붙여넣고 맨 아래에 append */}
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <label className="text-xs font-semibold text-slate-600">＋ 이번 주 추가</label>
-                <textarea
-                  value={weekInput}
-                  onChange={e => setWeekInput(e.target.value)}
-                  className="mt-2 w-full h-24 p-3 border border-slate-200 rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-                  placeholder="새로 받은 주간 스케줄을 붙여넣고 '맨 아래에 추가'를 누르세요"
-                  spellCheck={false}
-                />
-                <button
-                  onClick={handleAddWeek}
-                  disabled={!weekInput.trim()}
-                  className="mt-2 w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg transition-colors text-sm"
-                >
-                  맨 아래에 추가
-                </button>
-              </div>
-
-            </div>
-
-            {/* 통계 카드 */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                이번 달 요약
-              </h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-slate-50 rounded-xl p-3">
-                  <div className="text-xs text-slate-500 font-medium">근무일</div>
-                  <div className="text-2xl font-bold text-slate-900 mt-1">{stats.workDays}<span className="text-sm text-slate-400 ml-0.5">일</span></div>
+            {/* 2) 요약 */}
+            <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
+              <h2 className="font-bold text-[#1E3932] mb-3 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#00704A]" />
+                근무 요약
+              </h2>
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="bg-[#F7F5EF] rounded-xl p-3 text-center">
+                  <div className="text-[11px] text-[#8C9A93] font-semibold">근무일</div>
+                  <div className="text-2xl font-bold text-[#1E3932] mt-1 tabular-nums">
+                    {stats.workDays}<span className="text-xs text-[#8C9A93] ml-0.5">일</span>
+                  </div>
                 </div>
-                <div className="bg-indigo-50 rounded-xl p-3">
-                  <div className="text-xs text-indigo-600 font-medium">총 시간</div>
-                  <div className="text-2xl font-bold text-indigo-900 mt-1">{stats.totalHours}<span className="text-sm text-indigo-400 ml-0.5">h</span></div>
+                <div className="bg-[#D4E9E2] rounded-xl p-3 text-center">
+                  <div className="text-[11px] text-[#006241] font-semibold">총 시간</div>
+                  <div className="text-2xl font-bold text-[#1E3932] mt-1 tabular-nums">
+                    {stats.totalHours}<span className="text-xs text-[#006241] ml-0.5">h</span>
+                  </div>
                 </div>
-                <div className="bg-purple-50 rounded-xl p-3">
-                  <div className="text-xs text-purple-600 font-medium">일 평균</div>
-                  <div className="text-2xl font-bold text-purple-900 mt-1">{stats.avgHours}<span className="text-sm text-purple-400 ml-0.5">h</span></div>
+                <div className="bg-[#F7F5EF] rounded-xl p-3 text-center">
+                  <div className="text-[11px] text-[#8C9A93] font-semibold">일 평균</div>
+                  <div className="text-2xl font-bold text-[#1E3932] mt-1 tabular-nums">
+                    {stats.avgHours}<span className="text-xs text-[#8C9A93] ml-0.5">h</span>
+                  </div>
                 </div>
               </div>
-            </div>
+              <p className="text-[11px] text-[#8C9A93] mt-2.5">하루 30분 휴게시간을 뺀 값입니다.</p>
+            </section>
 
-            {/* 다운로드 버튼 */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-              <h3 className="font-semibold text-slate-900 mb-3">배경화면 저장</h3>
-              <div className="space-y-2">
+            {/* 3) 저장 */}
+            <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
+              <h2 className="font-bold text-[#1E3932] mb-3">배경화면 저장</h2>
+              <div className="space-y-2.5">
                 <button
                   onClick={() => handleDownload('full')}
                   disabled={downloading !== ''}
-                  className="w-full flex items-center justify-between bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-all"
+                  className="w-full flex items-center justify-between bg-[#00704A] hover:bg-[#006241] disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-full transition-colors"
                 >
                   <span className="flex items-center gap-2 text-left">
                     <Smartphone className="w-4 h-4 shrink-0" />
                     <span>
                       전체화면
-                      <span className="block text-[11px] font-normal opacity-80">
+                      <span className="block text-[11px] font-normal opacity-85">
                         {device.width}×{device.height} · 내 기기
                       </span>
                     </span>
@@ -848,13 +753,13 @@ export default function App() {
                 <button
                   onClick={() => handleDownload('wide')}
                   disabled={downloading !== ''}
-                  className="w-full flex items-center justify-between bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-all"
+                  className="w-full flex items-center justify-between bg-white hover:bg-[#F7F5EF] disabled:opacity-50 disabled:cursor-not-allowed text-[#00704A] font-bold py-3 px-4 rounded-full border-2 border-[#00704A] transition-colors"
                 >
                   <span className="flex items-center gap-2 text-left">
                     <ImageIcon className="w-4 h-4 shrink-0" />
                     <span>
                       단축어용 (가로 1.4배)
-                      <span className="block text-[11px] font-normal opacity-80">
+                      <span className="block text-[11px] font-normal opacity-75">
                         {wideWidth}×{device.height} · 확대 여백 포함
                       </span>
                     </span>
@@ -863,33 +768,35 @@ export default function App() {
                 </button>
               </div>
               {downloading && (
-                <p className="text-xs text-indigo-600 mt-3 text-center font-medium">
+                <p className="text-xs text-[#00704A] mt-3 text-center font-semibold">
                   {downloading === 'wide' ? '단축어용' : '전체화면'} 이미지 생성 중...
                 </p>
               )}
-              <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+              <p className="text-[11px] text-[#8C9A93] mt-3 leading-relaxed">
                 해상도는 접속한 기기 기준으로 자동 설정됩니다. 단축어용은 배경화면 확대 시 잘림을 막기 위해 가로를 1.4배로 넓힌 버전입니다.
                 {canShare && ' 모바일에서는 공유 시트가 열리며, [이미지 저장]을 누르면 사진첩에 바로 들어갑니다.'}
               </p>
-            </div>
+            </section>
           </div>
 
-          {/* 미리보기 패널 */}
+          {/* ── 우측: 미리보기 ── */}
           <div className="lg:col-span-3">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+            <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-slate-900">미리보기</h3>
-                <span className="text-xs text-slate-500 font-medium">{device.width} × {device.height}</span>
+                <h2 className="font-bold text-[#1E3932]">미리보기</h2>
+                <span className="text-xs text-[#8C9A93] font-semibold tabular-nums">
+                  {device.width} × {device.height}
+                </span>
               </div>
 
-              <div className="bg-slate-100 rounded-xl p-4 flex items-center justify-center overflow-auto" style={{ minHeight: '560px' }}>
+              <div className="bg-[#F7F5EF] rounded-xl p-4 flex items-center justify-center overflow-auto" style={{ minHeight: '560px' }}>
                 <div
                   style={{
                     width: `${previewWidth}px`,
                     height: `${previewHeight}px`,
                     overflow: 'hidden',
-                    borderRadius: '8px',
-                    boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+                    borderRadius: '10px',
+                    boxShadow: '0 10px 40px rgba(30,57,50,0.18)',
                     background: 'white',
                     flexShrink: 0,
                   }}
@@ -910,12 +817,36 @@ export default function App() {
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-slate-500 mt-3 text-center">
-                접속한 기기 해상도({device.width}×{device.height})로 저장됩니다
-              </p>
-            </div>
+            </section>
           </div>
         </div>
+
+        {/* ── 누적 스케줄 — 최하단 ── */}
+        <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5 mt-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold text-[#1E3932]">누적 스케줄</h2>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-[#8C9A93] tabular-nums">{Object.keys(schedule).length}일</span>
+              <button
+                onClick={handleReset}
+                disabled={!input.trim()}
+                className="text-[#C8102E] hover:text-[#9B0C23] disabled:text-[#C9D6D0] disabled:cursor-not-allowed font-semibold flex items-center gap-1"
+              >
+                <RefreshCw className="w-3 h-3" /> 초기화
+              </button>
+            </div>
+          </div>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            className="w-full h-56 p-3 bg-[#F7F5EF] border border-[#D4E9E2] rounded-xl font-mono text-base leading-relaxed text-[#1E3932] placeholder:text-[#8C9A93] focus:outline-none focus:ring-2 focus:ring-[#00704A] focus:border-transparent resize-y"
+            placeholder="위 [스케줄 입력]에 붙여넣으면 여기에 쌓입니다. 직접 수정해도 됩니다."
+            spellCheck={false}
+          />
+          <p className="text-[11px] text-[#8C9A93] mt-2">
+            {savedAt ? `자동 저장됨 · ${savedAt}` : '입력하면 이 브라우저에 자동 저장됩니다'}
+          </p>
+        </section>
 
         {/* 숨겨진 렌더 영역 (다운로드용 원본 해상도) */}
         <div style={{ position: 'fixed', left: '-99999px', top: 0, pointerEvents: 'none' }} aria-hidden="true">

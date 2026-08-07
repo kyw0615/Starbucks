@@ -1,1 +1,18 @@
 @import "tailwindcss";
+
+/* iOS Safari는 입력 요소의 글자 크기가 16px 미만이면 포커스 시 자동으로 확대한다.
+   16px 이상으로 고정해 확대를 막는다 (maximum-scale로 막으면 확대 자체가 불가해 접근성이 떨어짐) */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* 입력 후 화면이 튀지 않도록 */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
+}
