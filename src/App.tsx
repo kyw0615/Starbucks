@@ -114,9 +114,9 @@ type CodeStyle = {
   dayColor: string | null; // null = 요일 기본색
 };
 
-// 스타벅스 팔레트
+// 테마 팔레트
 const SB = {
-  green: '#00704A',       // Starbucks Green
+  green: '#00704A',       // 메인 그린
   deep: '#1E3932',        // House Green (진한 배경/제목)
   accent: '#006241',
   mist: '#D4E9E2',        // 연한 그린
@@ -758,15 +758,23 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#F7F5EF]">
-      {/* 상단 바 */}
-      <header className="bg-[#00704A] text-white sticky top-0 z-10">
+    // 화면 전체를 세로로 나눠, 헤더는 고정하고 그 아래 영역만 스크롤한다
+    <div className="h-[100dvh] flex flex-col bg-[#F7F5EF] overflow-hidden">
+      {/* 상단 바 — 스크롤/바운스에 흔들리지 않는 고정 영역 */}
+      <header className="bg-[#00704A] text-white shrink-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center gap-2.5">
           <Calendar className="w-[18px] h-[18px] shrink-0 opacity-90" />
-          <h1 className="text-[15px] font-bold tracking-tight">스타벅스 스케줄 달력</h1>
+          <h1 className="text-[15px] font-bold tracking-tight">스케줄 달력</h1>
         </div>
       </header>
 
+      {/* 스크롤·바운스는 여기부터.
+          contain = 자체 바운스는 살리고 상위(문서)로 전파만 차단 → 헤더는 고정 유지.
+          배경색을 페이지와 동일하게 줘서 바운스로 드러나는 영역이 이어져 보이게 한다. */}
+      <main
+        className="flex-1 overflow-y-auto bg-[#F7F5EF]"
+        style={{ overscrollBehavior: 'contain' }}
+      >
       <div className="max-w-lg mx-auto pb-12">
 
         {/* 1) 미리보기 — 최상단, 프레임 없이 화면에 꽉 차게 */}
@@ -929,8 +937,10 @@ export default function App() {
             )}
           </section>
         </div>
+        </div>
+      </main>
 
-        {/* 숨겨진 렌더 영역 (다운로드용 원본 해상도) */}
+      {/* 숨겨진 렌더 영역 (다운로드용 원본 해상도) */}
         <div style={{ position: 'fixed', left: '-99999px', top: 0, pointerEvents: 'none' }} aria-hidden="true">
           <div ref={posterRef}>
             <CalendarPoster
@@ -952,7 +962,6 @@ export default function App() {
             />
           </div>
         </div>
-      </div>
     </div>
   );
 }

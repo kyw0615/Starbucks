@@ -13,6 +13,14 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* 문서 자체는 바운스하지 않게 (헤더가 딸려 움직이는 것을 막음).
+   실제 바운스는 헤더 아래 스크롤 영역(main)에서만 일어난다. */
+html,
+body {
+  overscroll-behavior: none;
+  background-color: #f7f5ef; /* 바운스로 드러나는 영역이 페이지 배경과 이어지도록 */
+}
+
 body {
   font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
 }
