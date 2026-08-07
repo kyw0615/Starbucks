@@ -200,6 +200,10 @@ const SHORTCUT_WIDTH_RATIO = 1.4;
 // 단축어용 달력 글자 확대 배율 (전체화면 기준)
 const WIDE_TEXT_SCALE = 1.3;
 
+// 월 표시 블록 내부 줄 간격 (연도↔MONTH, MONTH↔부제)
+const MONTH_LINE_GAP_TOP = 8;
+const MONTH_LINE_GAP_BOTTOM = 6;
+
 const BASE_W = 1206;
 const BASE_H = 2622;
 
@@ -210,11 +214,18 @@ function computeLayout(width: number, height: number, rows: number, isWide: bool
 
   // 좌우/하단 여백
   const padding = Math.round((isWide ? 44 : 60) * s);
-  // 상단은 별도로 얇게 — 월 표시를 한 줄로 압축해 달력을 위로 끌어올린다
-  const topPadding = Math.round((isWide ? 16 : 20) * s);
-  const headerHeight = Math.round((isWide ? 62 : 70) * s);
-  const weekdayBarHeight = Math.round((isWide ? 60 : 68) * s);
+
+  // 월 표시 블록(연도 / MONTH / 한글 부제)의 자체 높이 — 폰트 기준으로 딱 맞게 계산
+  const monthBigBase = isWide ? 96 : 132;
+  const monthSubBase = isWide ? 28 : 34;
+  const headerHeight = Math.round(
+    (monthSubBase + MONTH_LINE_GAP_TOP + monthBigBase + MONTH_LINE_GAP_BOTTOM + monthSubBase) * s
+  );
+
+  // 블록 위/아래 간격만 축소 (블록 자체 크기는 그대로)
+  const topPadding = Math.round((isWide ? 14 : 18) * s);
   const headerGap = Math.round(8 * s);
+  const weekdayBarHeight = Math.round((isWide ? 58 : 66) * s);
 
   const gridTop = topPadding + headerHeight + headerGap + weekdayBarHeight + Math.round(6 * s);
   const gridHeight = height - padding - gridTop; // 통계 영역 없음 → 달력이 하단까지 채움
@@ -268,9 +279,9 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
     : L.cs;
 
   const fs = {
-    monthBig: Math.round((isWide ? 54 : 60) * s),
-    monthSub: Math.round((isWide ? 26 : 28) * s),
-    weekday: Math.round((isWide ? 28 : 30) * s),
+    monthBig: Math.round((isWide ? 96 : 132) * s),
+    monthSub: Math.round((isWide ? 28 : 34) * s),
+    weekday: Math.round((isWide ? 30 : 32) * s),
     dayNum: Math.round(56 * cs),
     timeRow: Math.round(40 * cs),
     workHours: Math.round(30 * cs),
@@ -292,7 +303,7 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
         color: '#1f2937',
       }}
     >
-      {/* 헤더 — 한 줄로 압축해 달력을 위로 끌어올림 */}
+      {/* 헤더 — 연도 / MONTH / 한글 부제 (블록 위·아래 간격만 축소) */}
       <div style={{
         position: 'absolute',
         top: `${topPadding}px`,
@@ -300,35 +311,37 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
         right: `${padding}px`,
         height: `${headerHeight}px`,
         display: 'flex',
-        alignItems: 'baseline',
+        flexDirection: 'column',
+        justifyContent: 'flex-start',
       }}>
-        <span style={{
+        <div style={{
+          fontSize: `${fs.monthSub}px`,
+          lineHeight: 1,
+          color: SB.green,
+          fontWeight: 700,
+          letterSpacing: `${4 * s}px`,
+        }}>
+          {headerYear}
+        </div>
+        <div style={{
           fontSize: `${fs.monthBig}px`,
           fontWeight: 800,
           lineHeight: 1,
+          marginTop: `${MONTH_LINE_GAP_TOP * s}px`,
           color: SB.deep,
-          letterSpacing: `${-1 * s}px`,
+          letterSpacing: `${-2 * s}px`,
         }}>
           {headerEn}
-        </span>
-        <span style={{
+        </div>
+        <div style={{
           fontSize: `${fs.monthSub}px`,
-          fontWeight: 700,
-          color: SB.green,
-          marginLeft: `${12 * s}px`,
-          letterSpacing: `${2 * s}px`,
-        }}>
-          {headerYear}
-        </span>
-        <span style={{
-          fontSize: `${fs.monthSub}px`,
-          fontWeight: 600,
+          lineHeight: 1,
           color: SB.accent,
-          marginLeft: `${12 * s}px`,
-          opacity: 0.85,
+          fontWeight: 600,
+          marginTop: `${MONTH_LINE_GAP_BOTTOM * s}px`,
         }}>
           {headerKr}
-        </span>
+        </div>
       </div>
 
       {/* 요일 바 */}
