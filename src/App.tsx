@@ -203,14 +203,27 @@ const WIDE_TEXT_SCALE = 1.3;
 // 월 표시 블록 내부 줄 간격 (연도↔MONTH, MONTH↔부제)
 const MONTH_LINE_GAP_TOP = 8;
 const MONTH_LINE_GAP_BOTTOM = 6;
+// 월 표시 블록 위/아래 바깥 여백 (포스터 픽셀 기준 고정값)
+const MONTH_BLOCK_MARGIN = 30;
+
+// 웹 화면용 셀 높이 축소 비율. 다운로드는 배경화면이므로 화면을 꽉 채운다(1).
+const SCREEN_CELL_SHRINK = 0.76;
 
 const BASE_W = 1206;
 const BASE_H = 2622;
 
-// 포스터 레이아웃 계산 — 해상도/변형(variant)에 따라 비례 배치
-function computeLayout(width: number, height: number, rows: number, isWide: boolean) {
+// screen = 웹페이지 표시용(달력 높이만큼만 차지, 아래 여백 없음)
+// full   = 다운로드 전체화면 배경화면 (기기 해상도를 꽉 채움)
+// wide   = 다운로드 단축어용 (가로 1.4배)
+type Variant = 'screen' | 'full' | 'wide';
+
+// 포스터 레이아웃 계산.
+// heightBasis = 셀 높이를 정하는 기준 높이(기기 세로 해상도).
+// screen 변형은 달력이 끝나는 지점까지만 사용하므로 posterHeight가 heightBasis보다 작다.
+function computeLayout(width: number, heightBasis: number, rows: number, variant: Variant) {
+  const isWide = variant === 'wide';
   // 단축어용은 가로가 1.4배라 가로 기준 스케일이 과해지므로 세로 기준으로 억제한다
-  const s = isWide ? height / BASE_H : width / BASE_W;
+  const s = isWide ? heightBasis / BASE_H : width / BASE_W;
 
   // 좌우/하단 여백
   const padding = Math.round((isWide ? 44 : 60) * s);
@@ -222,27 +235,39 @@ function computeLayout(width: number, height: number, rows: number, isWide: bool
     (monthSubBase + MONTH_LINE_GAP_TOP + monthBigBase + MONTH_LINE_GAP_BOTTOM + monthSubBase) * s
   );
 
-  // 블록 위/아래 간격만 축소 (블록 자체 크기는 그대로)
-  const topPadding = Math.round((isWide ? 14 : 18) * s);
-  const headerGap = Math.round(8 * s);
+  // 월 표시 블록 위/아래 간격 (고정 30px)
+  const topPadding = MONTH_BLOCK_MARGIN;
+  const headerGap = MONTH_BLOCK_MARGIN;
   const weekdayBarHeight = Math.round((isWide ? 58 : 66) * s);
 
   const gridTop = topPadding + headerHeight + headerGap + weekdayBarHeight + Math.round(6 * s);
-  const gridHeight = height - padding - gridTop; // 통계 영역 없음 → 달력이 하단까지 채움
   const gridWidth = width - padding * 2;
 
   const cellGap = Math.max(4, Math.round(8 * s));
-  // 셀 높이 축소 비율 (남는 여백은 그리드 하단에 그대로 남음)
-  // 0.95(1차) × 0.8(2차, 20% 추가 축소) = 0.76
-  const CELL_HEIGHT_SHRINK = 0.76;
-  const cellHeight = ((gridHeight - cellGap * (rows - 1)) / rows) * CELL_HEIGHT_SHRINK;
+  // 기기 높이를 다 쓴다고 가정했을 때의 셀 높이
+  const availHeight = heightBasis - padding - gridTop;
+  const shrink = variant === 'screen' ? SCREEN_CELL_SHRINK : 1;
+  const cellHeight = ((availHeight - cellGap * (rows - 1)) / rows) * shrink;
   const cellWidth = (gridWidth - cellGap * 6) / 7;
+
+  // 그리드는 셀이 차지하는 만큼만 — 아래 남는 여백을 두지 않는다
+  const gridHeight = cellHeight * rows + cellGap * (rows - 1);
+
+  // 웹 화면용은 달력이 끝나는 지점까지만, 다운로드는 기기 해상도 그대로
+  const posterHeight = variant === 'screen'
+    ? Math.round(gridTop + gridHeight + padding)
+    : heightBasis;
 
   // 기준 셀 148×418 대비 스케일
   const cs = Math.min(cellWidth / 148, cellHeight / 418);
 
   return { s, padding, topPadding, headerHeight, weekdayBarHeight, headerGap,
-           gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth, cs };
+           gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth, cs, posterHeight };
+}
+
+// 웹페이지에 표시할 포스터의 높이 (달력 높이만큼)
+function screenPosterHeight(width: number, deviceHeight: number, rows: number) {
+  return computeLayout(width, deviceHeight, rows, 'screen').posterHeight;
 }
 
 type PosterProps = {
@@ -250,9 +275,9 @@ type PosterProps = {
   cells: Date[];
   months: FocusMonth[];
   width: number;
+  // 셀 높이 기준이 되는 기기 세로 해상도 (screen 변형도 이 값을 기준으로 계산)
   height: number;
-  // 'wide' = 단축어용(가로 1.4배). 헤더를 줄이고 셀 글자를 키워 달력을 강조한다.
-  variant?: 'full' | 'wide';
+  variant?: Variant;
 };
 
 function CalendarPoster({ schedule, cells, months, width, height, variant = 'full' }: PosterProps) {
@@ -268,15 +293,15 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
     ? `${months[0].month + 1}월 근무 일정`
     : `${months[0].month + 1}월–${months[months.length - 1].month + 1}월 근무 일정`;
 
-  const L = computeLayout(width, height, rows, isWide);
+  const L = computeLayout(width, height, rows, variant);
   const { s, padding, topPadding, headerHeight, weekdayBarHeight, headerGap,
-          gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth } = L;
+          gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth, posterHeight } = L;
 
   // 셀 글자 크기.
   // 단축어용은 "전체화면 기준"의 정확히 WIDE_TEXT_SCALE배가 되도록 기준점을 맞춘다.
   // (단축어용은 헤더가 작아 셀도 살짝 커지므로, 그 효과가 곱해지지 않도록 보정)
   const cs = isWide
-    ? computeLayout(width / SHORTCUT_WIDTH_RATIO, height, rows, false).cs * WIDE_TEXT_SCALE
+    ? computeLayout(width / SHORTCUT_WIDTH_RATIO, height, rows, 'full').cs * WIDE_TEXT_SCALE
     : L.cs;
 
   const fs = {
@@ -296,7 +321,7 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
     <div
       style={{
         width: `${width}px`,
-        height: `${height}px`,
+        height: `${posterHeight}px`,
         background: `linear-gradient(160deg, ${SB.cream} 0%, #EEF4F1 100%)`,
         fontFamily: '"Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif',
         position: 'relative',
@@ -726,6 +751,11 @@ export default function App() {
 
   // 미리보기는 감싸는 프레임 없이 컨테이너 폭에 꽉 차게 — 실제 폭을 측정해 배율 계산
   const previewScale = previewBoxW > 0 ? previewBoxW / device.width : 0;
+  // 웹 표시용 포스터 높이 (달력이 끝나는 지점까지 — 아래 빈 공간 없음)
+  const screenH = useMemo(
+    () => screenPosterHeight(device.width, device.height, dateCells.length / 7),
+    [device.width, device.height, dateCells.length]
+  );
 
   return (
     <div className="min-h-screen bg-[#F7F5EF]">
@@ -743,14 +773,14 @@ export default function App() {
         <div
           ref={previewBoxRef}
           className="w-full overflow-hidden"
-          style={{ aspectRatio: `${device.width} / ${device.height}` }}
+          style={{ aspectRatio: `${device.width} / ${screenH}` }}
         >
           {previewScale > 0 && (
             <div style={{
               transform: `scale(${previewScale})`,
               transformOrigin: 'top left',
               width: `${device.width}px`,
-              height: `${device.height}px`,
+              height: `${screenH}px`,
             }}>
               <CalendarPoster
                 schedule={schedule}
@@ -758,6 +788,7 @@ export default function App() {
                 months={focusMonths}
                 width={device.width}
                 height={device.height}
+                variant="screen"
               />
             </div>
           )}
