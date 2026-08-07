@@ -221,7 +221,9 @@ function computeLayout(width: number, height: number, rows: number, isWide: bool
   const gridWidth = width - padding * 2;
 
   const cellGap = Math.max(4, Math.round(8 * s));
-  const cellHeight = (gridHeight - cellGap * (rows - 1)) / rows;
+  // 세로가 살짝 넘치는 걸 완화하기 위해 셀 높이를 5% 줄인다 (남는 여백은 하단에 그대로 남음)
+  const CELL_HEIGHT_SHRINK = 0.95;
+  const cellHeight = ((gridHeight - cellGap * (rows - 1)) / rows) * CELL_HEIGHT_SHRINK;
   const cellWidth = (gridWidth - cellGap * 6) / 7;
 
   // 기준 셀 148×418 대비 스케일
@@ -696,11 +698,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F7F5EF]">
-      {/* 상단 바 — 슬림하게 (미리보기 공간 확보) */}
+      {/* 상단 바 — 최소 높이로 (미리보기와의 간격을 최대한 줄임) */}
       <header className="bg-[#00704A] text-white sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center gap-2.5">
-          <Calendar className="w-[18px] h-[18px] shrink-0 opacity-90" />
-          <h1 className="text-[15px] font-bold tracking-tight">스타벅스 스케줄 달력</h1>
+        <div className="max-w-lg mx-auto px-4 py-1 flex items-center gap-1.5">
+          <Calendar className="w-3.5 h-3.5 shrink-0 opacity-90" />
+          <h1 className="text-[12px] font-bold tracking-tight leading-none">스타벅스 스케줄 달력</h1>
         </div>
       </header>
 
