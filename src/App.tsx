@@ -208,15 +208,15 @@ function computeLayout(width: number, height: number, rows: number, isWide: bool
   // 단축어용은 가로가 1.4배라 가로 기준 스케일이 과해지므로 세로 기준으로 억제한다
   const s = isWide ? height / BASE_H : width / BASE_W;
 
-  // 단축어용: 상단 월 표시 구역의 여백과 높이를 줄여 달력에 공간을 더 준다
+  // 좌우/하단 여백
   const padding = Math.round((isWide ? 44 : 60) * s);
-  const headerHeight = isWide
-    ? Math.round(150 * s)
-    : Math.round(300 * s * Math.min(1.15, height / BASE_H + 0.1));
-  const weekdayBarHeight = Math.round((isWide ? 62 : 80) * s);
-  const headerGap = Math.round((isWide ? 6 : 14) * s);
+  // 상단은 별도로 얇게 — 월 표시를 한 줄로 압축해 달력을 위로 끌어올린다
+  const topPadding = Math.round((isWide ? 16 : 20) * s);
+  const headerHeight = Math.round((isWide ? 62 : 70) * s);
+  const weekdayBarHeight = Math.round((isWide ? 60 : 68) * s);
+  const headerGap = Math.round(8 * s);
 
-  const gridTop = padding + headerHeight + headerGap + weekdayBarHeight + Math.round(6 * s);
+  const gridTop = topPadding + headerHeight + headerGap + weekdayBarHeight + Math.round(6 * s);
   const gridHeight = height - padding - gridTop; // 통계 영역 없음 → 달력이 하단까지 채움
   const gridWidth = width - padding * 2;
 
@@ -229,7 +229,7 @@ function computeLayout(width: number, height: number, rows: number, isWide: bool
   // 기준 셀 148×418 대비 스케일
   const cs = Math.min(cellWidth / 148, cellHeight / 418);
 
-  return { s, padding, headerHeight, weekdayBarHeight, headerGap,
+  return { s, padding, topPadding, headerHeight, weekdayBarHeight, headerGap,
            gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth, cs };
 }
 
@@ -257,7 +257,7 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
     : `${months[0].month + 1}월–${months[months.length - 1].month + 1}월 근무 일정`;
 
   const L = computeLayout(width, height, rows, isWide);
-  const { s, padding, headerHeight, weekdayBarHeight, headerGap,
+  const { s, padding, topPadding, headerHeight, weekdayBarHeight, headerGap,
           gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth } = L;
 
   // 셀 글자 크기.
@@ -268,9 +268,9 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
     : L.cs;
 
   const fs = {
-    monthBig: Math.round((isWide ? 96 : 132) * s),
-    monthSub: Math.round((isWide ? 28 : 34) * s),
-    weekday: Math.round((isWide ? 30 : 32) * s),
+    monthBig: Math.round((isWide ? 54 : 60) * s),
+    monthSub: Math.round((isWide ? 26 : 28) * s),
+    weekday: Math.round((isWide ? 28 : 30) * s),
     dayNum: Math.round(56 * cs),
     timeRow: Math.round(40 * cs),
     workHours: Math.round(30 * cs),
@@ -292,32 +292,49 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
         color: '#1f2937',
       }}
     >
-      {/* 헤더 — 범례 제거, 월/연도만 표시 */}
+      {/* 헤더 — 한 줄로 압축해 달력을 위로 끌어올림 */}
       <div style={{
         position: 'absolute',
-        top: `${padding}px`,
+        top: `${topPadding}px`,
         left: `${padding}px`,
         right: `${padding}px`,
         height: `${headerHeight}px`,
         display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-end',
+        alignItems: 'baseline',
       }}>
-        <div style={{ fontSize: `${fs.monthSub}px`, color: SB.green, fontWeight: 700, letterSpacing: `${4 * s}px` }}>
-          {headerYear}
-        </div>
-        <div style={{ fontSize: `${fs.monthBig}px`, fontWeight: 800, lineHeight: 1, marginTop: `${8 * s}px`, color: SB.deep, letterSpacing: `${-2 * s}px` }}>
+        <span style={{
+          fontSize: `${fs.monthBig}px`,
+          fontWeight: 800,
+          lineHeight: 1,
+          color: SB.deep,
+          letterSpacing: `${-1 * s}px`,
+        }}>
           {headerEn}
-        </div>
-        <div style={{ fontSize: `${fs.monthSub}px`, color: SB.accent, fontWeight: 600, marginTop: `${6 * s}px` }}>
+        </span>
+        <span style={{
+          fontSize: `${fs.monthSub}px`,
+          fontWeight: 700,
+          color: SB.green,
+          marginLeft: `${12 * s}px`,
+          letterSpacing: `${2 * s}px`,
+        }}>
+          {headerYear}
+        </span>
+        <span style={{
+          fontSize: `${fs.monthSub}px`,
+          fontWeight: 600,
+          color: SB.accent,
+          marginLeft: `${12 * s}px`,
+          opacity: 0.85,
+        }}>
           {headerKr}
-        </div>
+        </span>
       </div>
 
       {/* 요일 바 */}
       <div style={{
         position: 'absolute',
-        top: `${padding + headerHeight + headerGap}px`,
+        top: `${topPadding + headerHeight + headerGap}px`,
         left: `${padding}px`,
         right: `${padding}px`,
         height: `${weekdayBarHeight}px`,
@@ -698,11 +715,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F7F5EF]">
-      {/* 상단 바 — 최소 높이로 (미리보기와의 간격을 최대한 줄임) */}
+      {/* 상단 바 */}
       <header className="bg-[#00704A] text-white sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-1 flex items-center gap-1.5">
-          <Calendar className="w-3.5 h-3.5 shrink-0 opacity-90" />
-          <h1 className="text-[12px] font-bold tracking-tight leading-none">스타벅스 스케줄 달력</h1>
+        <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center gap-2.5">
+          <Calendar className="w-[18px] h-[18px] shrink-0 opacity-90" />
+          <h1 className="text-[15px] font-bold tracking-tight">스타벅스 스케줄 달력</h1>
         </div>
       </header>
 
