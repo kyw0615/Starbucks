@@ -2,11 +2,14 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <!-- 모바일: 확대 허용 + 노치 영역까지 사용 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#00704A" />
-    <meta name="description" content="스타벅스 근무표를 붙여넣으면 달력 배경화면 이미지로 만들어 줍니다. 기기 해상도에 맞춰 자동 저장." />
+    <meta name="description" content="스타벅스 근무표를 붙여넣으면 달력으로 보여줍니다. 배경화면 이미지로도 저장할 수 있습니다." />
+
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
+    <link rel="apple-touch-icon" href="./icon-180.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
 
     <!-- 홈 화면에 추가했을 때 앱처럼 실행 -->
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,10 +17,21 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="스벅 스케줄" />
 
-    <title>스타벅스 스케줄 달력 생성</title>
+    <title>스타벅스 스케줄 달력</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // 오프라인 지원 — 배포된 환경(HTTPS)에서만 등록
+      if ('serviceWorker' in navigator && location.protocol === 'https:') {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register(
+            new URL('sw.js', document.baseURI).href,
+            { scope: new URL('./', document.baseURI).href }
+          ).catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

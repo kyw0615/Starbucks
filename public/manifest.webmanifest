@@ -1,0 +1,17 @@
+{
+  "name": "스타벅스 스케줄 달력",
+  "short_name": "스벅 스케줄",
+  "description": "근무표를 붙여넣으면 달력으로 보여줍니다. 배경화면 이미지로도 저장할 수 있습니다.",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F5EF",
+  "theme_color": "#00704A",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
