@@ -195,8 +195,41 @@ const WEEKDAYS_KR = ['일', '월', '화', '수', '목', '금', '토'];
 // =================== 캘린더 렌더 (배경화면용) ===================
 // 해상도 무관 — width/height를 받아 레이아웃을 비례 계산한다.
 // 기준 해상도 1206×2622 (iPhone 16 Pro) 대비 스케일로 폰트/여백을 조정.
+// 단축어(아이폰 배경화면 자동화)용 가로 확장 배율
+const SHORTCUT_WIDTH_RATIO = 1.4;
+// 단축어용 달력 글자 확대 배율 (전체화면 기준)
+const WIDE_TEXT_SCALE = 1.3;
+
 const BASE_W = 1206;
 const BASE_H = 2622;
+
+// 포스터 레이아웃 계산 — 해상도/변형(variant)에 따라 비례 배치
+function computeLayout(width: number, height: number, rows: number, isWide: boolean) {
+  // 단축어용은 가로가 1.4배라 가로 기준 스케일이 과해지므로 세로 기준으로 억제한다
+  const s = isWide ? height / BASE_H : width / BASE_W;
+
+  // 단축어용: 상단 월 표시 구역의 여백과 높이를 줄여 달력에 공간을 더 준다
+  const padding = Math.round((isWide ? 44 : 60) * s);
+  const headerHeight = isWide
+    ? Math.round(150 * s)
+    : Math.round(300 * s * Math.min(1.15, height / BASE_H + 0.1));
+  const weekdayBarHeight = Math.round((isWide ? 62 : 80) * s);
+  const headerGap = Math.round((isWide ? 6 : 14) * s);
+
+  const gridTop = padding + headerHeight + headerGap + weekdayBarHeight + Math.round(6 * s);
+  const gridHeight = height - padding - gridTop; // 통계 영역 없음 → 달력이 하단까지 채움
+  const gridWidth = width - padding * 2;
+
+  const cellGap = Math.max(4, Math.round(8 * s));
+  const cellHeight = (gridHeight - cellGap * (rows - 1)) / rows;
+  const cellWidth = (gridWidth - cellGap * 6) / 7;
+
+  // 기준 셀 148×418 대비 스케일
+  const cs = Math.min(cellWidth / 148, cellHeight / 418);
+
+  return { s, padding, headerHeight, weekdayBarHeight, headerGap,
+           gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth, cs };
+}
 
 type PosterProps = {
   schedule: Schedule;
@@ -204,9 +237,12 @@ type PosterProps = {
   months: FocusMonth[];
   width: number;
   height: number;
+  // 'wide' = 단축어용(가로 1.4배). 헤더를 줄이고 셀 글자를 키워 달력을 강조한다.
+  variant?: 'full' | 'wide';
 };
 
-function CalendarPoster({ schedule, cells, months, width, height }: PosterProps) {
+function CalendarPoster({ schedule, cells, months, width, height, variant = 'full' }: PosterProps) {
+  const isWide = variant === 'wide';
   const rows = cells.length / 7;
 
   // 헤더 라벨: 단일/다중 월 자동 분기
@@ -218,29 +254,21 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
     ? `${months[0].month + 1}월 근무 일정`
     : `${months[0].month + 1}월–${months[months.length - 1].month + 1}월 근무 일정`;
 
-  // 가로 기준 스케일 — 헤더/여백용
-  const s = width / BASE_W;
+  const L = computeLayout(width, height, rows, isWide);
+  const { s, padding, headerHeight, weekdayBarHeight, headerGap,
+          gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth } = L;
 
-  const padding = Math.round(60 * s);
-  const headerHeight = Math.round(300 * s * Math.min(1.15, height / BASE_H + 0.1));
-  const weekdayBarHeight = Math.round(80 * s);
-
-  const gridTop = padding + headerHeight + Math.round(14 * s) + weekdayBarHeight + Math.round(6 * s);
-  const gridBottom = height - padding; // 통계 영역 제거 → 달력이 하단까지 채움
-  const gridHeight = gridBottom - gridTop;
-  const gridWidth = width - padding * 2;
-
-  const cellGap = Math.max(4, Math.round(8 * s));
-  const cellHeight = (gridHeight - cellGap * (rows - 1)) / rows;
-  const cellWidth = (gridWidth - cellGap * 6) / 7;
-
-  // 셀 내부 폰트는 셀 크기에 맞춰 스케일 (기준 셀: 148×418)
-  const cs = Math.min(cellWidth / 148, cellHeight / 418);
+  // 셀 글자 크기.
+  // 단축어용은 "전체화면 기준"의 정확히 WIDE_TEXT_SCALE배가 되도록 기준점을 맞춘다.
+  // (단축어용은 헤더가 작아 셀도 살짝 커지므로, 그 효과가 곱해지지 않도록 보정)
+  const cs = isWide
+    ? computeLayout(width / SHORTCUT_WIDTH_RATIO, height, rows, false).cs * WIDE_TEXT_SCALE
+    : L.cs;
 
   const fs = {
-    monthBig: Math.round(132 * s),
-    monthSub: Math.round(34 * s),
-    weekday: Math.round(32 * s),
+    monthBig: Math.round((isWide ? 96 : 132) * s),
+    monthSub: Math.round((isWide ? 28 : 34) * s),
+    weekday: Math.round((isWide ? 30 : 32) * s),
     dayNum: Math.round(56 * cs),
     timeRow: Math.round(40 * cs),
     workHours: Math.round(30 * cs),
@@ -287,7 +315,7 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
       {/* 요일 바 */}
       <div style={{
         position: 'absolute',
-        top: `${padding + headerHeight + Math.round(14 * s)}px`,
+        top: `${padding + headerHeight + headerGap}px`,
         left: `${padding}px`,
         right: `${padding}px`,
         height: `${weekdayBarHeight}px`,
@@ -493,9 +521,6 @@ function CalendarPoster({ schedule, cells, months, width, height }: PosterProps)
 
 // =================== 메인 앱 ===================
 const STORAGE_KEY = 'artifacts-schedule-input-v1';
-
-// 단축어(아이폰 배경화면 자동화)용 가로 확장 배율
-const SHORTCUT_WIDTH_RATIO = 1.4;
 
 function loadInitialInput() {
   try {
@@ -866,6 +891,7 @@ export default function App() {
               months={focusMonths}
               width={wideWidth}
               height={device.height}
+              variant="wide"
             />
           </div>
         </div>
