@@ -232,8 +232,9 @@ function computeLayout(width: number, height: number, rows: number, isWide: bool
   const gridWidth = width - padding * 2;
 
   const cellGap = Math.max(4, Math.round(8 * s));
-  // 세로가 살짝 넘치는 걸 완화하기 위해 셀 높이를 5% 줄인다 (남는 여백은 하단에 그대로 남음)
-  const CELL_HEIGHT_SHRINK = 0.95;
+  // 셀 높이 축소 비율 (남는 여백은 그리드 하단에 그대로 남음)
+  // 0.95(1차) × 0.8(2차, 20% 추가 축소) = 0.76
+  const CELL_HEIGHT_SHRINK = 0.76;
   const cellHeight = ((gridHeight - cellGap * (rows - 1)) / rows) * CELL_HEIGHT_SHRINK;
   const cellWidth = (gridWidth - cellGap * 6) / 7;
 
