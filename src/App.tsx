@@ -13,6 +13,8 @@ const parseKey = (k: string) => {
   return new Date(y, m - 1, d);
 };
 
+const WEEKDAYS_KR = ['일', '월', '화', '수', '목', '금', '토'];
+
 // 하루치 근태 항목
 type Entry = { start: string; end: string; code: string };
 // 날짜(YYYY-MM-DD) → 근태
@@ -103,51 +105,35 @@ function parseSchedule(text: string): Schedule {
   return map;
 }
 
-// 달력 창보다 앞선(=다시 보이지 않는) 지난 일정을 텍스트에서 걷어낸다.
-// 사용자가 쓴 원본 줄을 그대로 보존하고, 버릴 블록의 줄만 제거한다.
-// 연도 추론(12→1 롤오버)은 parseSchedule과 동일한 규칙으로 스캔해야 하므로
-// 버리는 줄도 빠짐없이 훑는다.
-function pruneOldText(text: string, cutoffKey: string): { text: string; removed: number } {
-  const lines = text.split(/\r?\n/);
-  const dateRe = /(\d{1,2})\/(\d{1,2})/;
-  const headerRe = /^\s*(출근|퇴근|근태코드)\s*$/;
+// 파싱된 일정을 표준 형식의 텍스트로 되돌린다.
+// 날짜순 정렬 + 같은 날짜 중복 제거가 자연히 따라온다.
+function formatSchedule(schedule: Schedule): string {
+  return Object.keys(schedule)
+    .sort()
+    .map(k => {
+      const d = parseKey(k);
+      const e = schedule[k];
+      const lines = [`${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}(${WEEKDAYS_KR[d.getDay()]})`];
+      if (e.start && e.end) lines.push(e.start, e.end);
+      if (e.code) lines.push(e.code);
+      return lines.join('\n');
+    })
+    .join('\n');
+}
 
-  let year = new Date().getFullYear();
-  let lastMonth: number | null = null;
-  let keep = true;
+// 달력 창보다 앞선(=다시 보이지 않는) 지난 일정을 걷어내고 텍스트를 재생성한다.
+function pruneOldText(text: string, cutoffKey: string): { text: string; removed: number } {
+  const all = parseSchedule(text);
+  const kept: Schedule = {};
   let removed = 0;
 
-  const out: string[] = [];
-  let pendingHeaders: string[] = []; // 뒤에 남는 블록이 있을 때만 살린다
-
-  for (const line of lines) {
-    if (headerRe.test(line)) {
-      pendingHeaders.push(line);
-      continue;
-    }
-
-    const m = line.match(dateRe);
-    if (m) {
-      const mm = parseInt(m[1]);
-      const dd = parseInt(m[2]);
-      if (lastMonth != null && mm < lastMonth && lastMonth >= 11 && mm <= 2) year++;
-      lastMonth = mm;
-      keep = `${year}-${pad2(mm)}-${pad2(dd)}` >= cutoffKey;
-      if (!keep) removed++;
-    }
-
-    if (keep) {
-      if (pendingHeaders.length) {
-        out.push(...pendingHeaders);
-        pendingHeaders = [];
-      }
-      out.push(line);
-    }
+  for (const k of Object.keys(all)) {
+    const e = all[k];
+    if (!e.code && !(e.start && e.end)) continue; // 내용 없는 항목은 버린다
+    if (k >= cutoffKey) kept[k] = e;
+    else removed++;
   }
-
-  // 앞뒤 빈 줄 정리
-  const cleaned = out.join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
-  return { text: cleaned, removed };
+  return { text: formatSchedule(kept), removed };
 }
 
 // 근태코드를 따로 등록하지 않는다. 출퇴근 시간 유무로만 판단:
@@ -245,8 +231,6 @@ function getCalendarCells(schedule: Schedule): { cells: Date[]; months: FocusMon
 
   return { cells, months };
 }
-
-const WEEKDAYS_KR = ['일', '월', '화', '수', '목', '금', '토'];
 
 // =================== 캘린더 렌더 (배경화면용) ===================
 // 해상도 무관 — width/height를 받아 레이아웃을 비례 계산한다.
@@ -661,12 +645,13 @@ function loadInitialInput() {
   }
 }
 
-// 앱을 열 때 한 번, 달력에 더는 보이지 않는 지난 일정을 정리한다.
+// 앱을 열 때 한 번, 지난 일정을 정리하고 텍스트를 표준 형식으로 재생성한다.
+// (날짜순 정렬 + 중복 제거가 함께 적용된다)
 // 되돌릴 수 있도록 정리 직전 텍스트도 함께 돌려준다.
 function loadAndPrune() {
   const before = loadInitialInput();
   const { text, removed } = pruneOldText(before, dateKey(getWindowStart()));
-  return { text, removed, before };
+  return { text, removed, before, changed: text.trim() !== before.trim() };
 }
 
 // 현재 기기의 물리 해상도 (세로 기준). 회전 상태와 무관하게 세로로 정규화.
@@ -691,7 +676,7 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   // 자동 정리 결과 안내 (되돌리기용 원본 보관)
   const [pruned, setPruned] = useState<{ count: number; before: string } | null>(
-    boot.removed > 0 ? { count: boot.removed, before: boot.before } : null
+    boot.changed ? { count: boot.removed, before: boot.before } : null
   );
   const [downloading, setDownloading] = useState('');
   const [device, setDevice] = useState(getDeviceSize);
@@ -1042,7 +1027,9 @@ export default function App() {
             {pruned && (
               <div className="mt-2 flex items-center justify-between gap-2 bg-[#F7F5EF] border border-[#D4E9E2] rounded-lg px-3 py-2">
                 <span className="text-[11px] text-[#1E3932] leading-snug">
-                  달력에서 벗어난 지난 <b className="font-bold tabular-nums">{pruned.count}일</b>치를 정리했습니다
+                  {pruned.count > 0
+                    ? <>달력에서 벗어난 지난 <b className="font-bold tabular-nums">{pruned.count}일</b>치를 정리했습니다</>
+                    : <>누적 스케줄을 날짜순으로 정리했습니다</>}
                 </span>
                 <button
                   onClick={handleUndoPrune}
