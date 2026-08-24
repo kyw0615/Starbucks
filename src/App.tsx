@@ -103,6 +103,53 @@ function parseSchedule(text: string): Schedule {
   return map;
 }
 
+// 달력 창보다 앞선(=다시 보이지 않는) 지난 일정을 텍스트에서 걷어낸다.
+// 사용자가 쓴 원본 줄을 그대로 보존하고, 버릴 블록의 줄만 제거한다.
+// 연도 추론(12→1 롤오버)은 parseSchedule과 동일한 규칙으로 스캔해야 하므로
+// 버리는 줄도 빠짐없이 훑는다.
+function pruneOldText(text: string, cutoffKey: string): { text: string; removed: number } {
+  const lines = text.split(/\r?\n/);
+  const dateRe = /(\d{1,2})\/(\d{1,2})/;
+  const headerRe = /^\s*(출근|퇴근|근태코드)\s*$/;
+
+  let year = new Date().getFullYear();
+  let lastMonth: number | null = null;
+  let keep = true;
+  let removed = 0;
+
+  const out: string[] = [];
+  let pendingHeaders: string[] = []; // 뒤에 남는 블록이 있을 때만 살린다
+
+  for (const line of lines) {
+    if (headerRe.test(line)) {
+      pendingHeaders.push(line);
+      continue;
+    }
+
+    const m = line.match(dateRe);
+    if (m) {
+      const mm = parseInt(m[1]);
+      const dd = parseInt(m[2]);
+      if (lastMonth != null && mm < lastMonth && lastMonth >= 11 && mm <= 2) year++;
+      lastMonth = mm;
+      keep = `${year}-${pad2(mm)}-${pad2(dd)}` >= cutoffKey;
+      if (!keep) removed++;
+    }
+
+    if (keep) {
+      if (pendingHeaders.length) {
+        out.push(...pendingHeaders);
+        pendingHeaders = [];
+      }
+      out.push(line);
+    }
+  }
+
+  // 앞뒤 빈 줄 정리
+  const cleaned = out.join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
+  return { text: cleaned, removed };
+}
+
 // 근태코드를 따로 등록하지 않는다. 출퇴근 시간 유무로만 판단:
 //   시간 있음 → 근무일 (법정휴일 근무만 붉게)
 //   시간 없음 → 휴일/휴가 (근태코드를 달력에 그대로 표시)
@@ -150,15 +197,24 @@ function getEntryStyle(entry: Entry): CodeStyle {
   };
 }
 
+// 달력에 보이는 첫 날 — 오늘 기준 1주 전을 일요일로 스냅한 날.
+// 이 날보다 앞선 일정은 시간이 지나도 다시 보이지 않으므로 정리 대상이다.
+function getWindowStart(): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(today);
+  start.setDate(start.getDate() - 7);
+  start.setDate(start.getDate() - start.getDay()); // 일요일로 스냅
+  return start;
+}
+
 // 오늘 기준 1주 전(일요일 스냅) ~ 5주(35일) 고정 윈도우
 // 셀 개수가 일정해 비율이 항상 일정함. 일정이 있는 월만 포커스로 표시.
 function getCalendarCells(schedule: Schedule): { cells: Date[]; months: FocusMonth[] } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const start = new Date(today);
-  start.setDate(start.getDate() - 7);
-  start.setDate(start.getDate() - start.getDay()); // 일요일로 스냅
+  const start = getWindowStart();
 
   const cells: Date[] = [];
   for (let i = 0; i < 35; i++) {
@@ -605,6 +661,14 @@ function loadInitialInput() {
   }
 }
 
+// 앱을 열 때 한 번, 달력에 더는 보이지 않는 지난 일정을 정리한다.
+// 되돌릴 수 있도록 정리 직전 텍스트도 함께 돌려준다.
+function loadAndPrune() {
+  const before = loadInitialInput();
+  const { text, removed } = pruneOldText(before, dateKey(getWindowStart()));
+  return { text, removed, before };
+}
+
 // 현재 기기의 물리 해상도 (세로 기준). 회전 상태와 무관하게 세로로 정규화.
 function getDeviceSize() {
   if (typeof window === 'undefined') return { width: BASE_W, height: BASE_H };
@@ -619,10 +683,16 @@ function getDeviceSize() {
 }
 
 export default function App() {
-  const [input, setInput] = useState(loadInitialInput);
+  // 최초 렌더 전에 지난 일정을 정리해 둔다 (effect에서 setState 하지 않도록)
+  const [boot] = useState(loadAndPrune);
+  const [input, setInput] = useState(boot.text);
   const [weekInput, setWeekInput] = useState('');
   const [savedAt, setSavedAt] = useState('');
   const [copied, setCopied] = useState(false);
+  // 자동 정리 결과 안내 (되돌리기용 원본 보관)
+  const [pruned, setPruned] = useState<{ count: number; before: string } | null>(
+    boot.removed > 0 ? { count: boot.removed, before: boot.before } : null
+  );
   const [downloading, setDownloading] = useState('');
   const [device, setDevice] = useState(getDeviceSize);
 
@@ -701,6 +771,13 @@ export default function App() {
     const parts = focusMonths.map(m => `${m.year}${pad2(m.month + 1)}`);
     return `schedule-${parts.join('-')}`;
   }, [focusMonths]);
+
+  // 자동 정리 되돌리기 — 정리 직전 텍스트로 복원
+  const handleUndoPrune = () => {
+    if (!pruned) return;
+    setInput(pruned.before);
+    setPruned(null);
+  };
 
   // 누적 스케줄 텍스트를 클립보드로 복사
   const handleCopy = async () => {
@@ -962,6 +1039,19 @@ export default function App() {
               placeholder="위 [스케줄 입력]에 붙여넣으면 여기에 쌓입니다. 직접 수정해도 됩니다."
               spellCheck={false}
             />
+            {pruned && (
+              <div className="mt-2 flex items-center justify-between gap-2 bg-[#F7F5EF] border border-[#D4E9E2] rounded-lg px-3 py-2">
+                <span className="text-[11px] text-[#1E3932] leading-snug">
+                  달력에서 벗어난 지난 <b className="font-bold tabular-nums">{pruned.count}일</b>치를 정리했습니다
+                </span>
+                <button
+                  onClick={handleUndoPrune}
+                  className="shrink-0 text-[11px] font-bold text-[#00704A] hover:text-[#006241] underline underline-offset-2"
+                >
+                  되돌리기
+                </button>
+              </div>
+            )}
             <p className="text-[11px] text-[#8C9A93] mt-2">
               {savedAt ? `자동 저장됨 · ${savedAt}` : '입력하면 이 브라우저에 자동 저장됩니다'}
             </p>
