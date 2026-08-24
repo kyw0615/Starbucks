@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Download, Share2, Calendar, Clock, Briefcase, Smartphone, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import { Download, Share2, Calendar, Clock, Briefcase, Smartphone, RefreshCw, Copy, Check, Image as ImageIcon } from 'lucide-react';
 import { toBlob } from 'html-to-image';
 
 // 첫 방문 시 빈 상태로 시작한다 (예시 데이터 없음)
@@ -209,6 +209,10 @@ const MONTH_BLOCK_MARGIN = 30;
 // 웹 화면용 셀 높이 축소 비율. 다운로드는 배경화면이므로 화면을 꽉 채운다(1).
 const SCREEN_CELL_SHRINK = 0.76;
 
+// 오늘 날짜 강조 — 웹 화면(screen)에서만 적용. 배경화면 이미지는 그대로 둔다.
+// 테두리 + 연한 배경: 칸 안의 날짜색·시간 정보를 전혀 덮지 않으면서 눈에 들어온다.
+const TODAY_BG = '#E8F4EF';
+
 const BASE_W = 1206;
 const BASE_H = 2622;
 
@@ -284,6 +288,11 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
   const isWide = variant === 'wide';
   const rows = cells.length / 7;
 
+  // 오늘 강조는 웹 화면에서만
+  const todayRef = new Date();
+  todayRef.setHours(0, 0, 0, 0);
+  const todayKey = variant === 'screen' ? dateKey(todayRef) : null;
+
   // 헤더 라벨: 단일/다중 월 자동 분기
   const headerYear = months[0]?.year ?? new Date().getFullYear();
   const headerEn = months.length === 1
@@ -316,6 +325,7 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
   };
 
   const innerPad = Math.round(16 * cs);
+  const todayBorder = Math.max(3, Math.round(6 * cs));
 
   return (
     <div
@@ -418,6 +428,8 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
           const inFocusMonth = months.some(
             m => m.year === date.getFullYear() && m.month === date.getMonth()
           );
+          const isToday = todayKey !== null && key === todayKey;
+
           if (!inFocusMonth && !entry) {
             return (
               <div key={idx} style={{
@@ -426,11 +438,13 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
                 top: `${cellTop}px`,
                 width: `${cellWidth}px`,
                 height: `${cellHeight}px`,
-                background: 'rgba(255,255,255,0.35)',
+                background: isToday ? TODAY_BG : 'rgba(255,255,255,0.35)',
                 borderRadius: `${12 * cs}px`,
-                border: `1px solid ${SB.mist}`,
+                border: isToday
+                  ? `${todayBorder}px solid ${SB.green}`
+                  : `1px solid ${SB.mist}`,
                 boxSizing: 'border-box',
-                opacity: 0.55,
+                opacity: isToday ? 1 : 0.55,
               }}>
                 <span style={{
                   position: 'absolute',
@@ -474,9 +488,11 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
               top: `${cellTop}px`,
               width: `${cellWidth}px`,
               height: `${cellHeight}px`,
-              background: bg,
+              background: isToday ? TODAY_BG : bg,
               borderRadius: `${12 * cs}px`,
-              border: `1px solid ${SB.mist}`,
+              border: isToday
+                ? `${todayBorder}px solid ${SB.green}`
+                : `1px solid ${SB.mist}`,
               boxSizing: 'border-box',
               overflow: 'hidden',
             }}>
@@ -606,6 +622,7 @@ export default function App() {
   const [input, setInput] = useState(loadInitialInput);
   const [weekInput, setWeekInput] = useState('');
   const [savedAt, setSavedAt] = useState('');
+  const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState('');
   const [device, setDevice] = useState(getDeviceSize);
 
@@ -684,6 +701,51 @@ export default function App() {
     const parts = focusMonths.map(m => `${m.year}${pad2(m.month + 1)}`);
     return `schedule-${parts.join('-')}`;
   }, [focusMonths]);
+
+  // 누적 스케줄 텍스트를 클립보드로 복사
+  const handleCopy = async () => {
+    const text = input.trim();
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // 구형 브라우저 / 비보안 컨텍스트 폴백
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (e) {
+      console.error(e);
+      alert('복사하지 못했습니다. 텍스트를 직접 선택해 복사해 주세요.');
+    }
+  };
+
+  // 누적 스케줄 텍스트를 공유 시트로 (메시지·카톡 등으로 전달)
+  const handleShareText = async () => {
+    const text = input.trim();
+    if (!text) return;
+    if (!navigator.share) {
+      // 공유를 지원하지 않으면 복사로 대체
+      handleCopy();
+      return;
+    }
+    try {
+      await navigator.share({ text });
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return; // 사용자가 닫음
+      console.error(err);
+      handleCopy();
+    }
+  };
 
   // 전체 삭제 — 되돌릴 수 없으므로 확인을 받는다
   const handleReset = () => {
@@ -862,16 +924,36 @@ export default function App() {
           <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-[#1E3932]">누적 스케줄</h2>
-              <div className="flex items-center gap-3 text-xs">
-                <span className="text-[#8C9A93] tabular-nums">{Object.keys(schedule).length}일</span>
-                <button
-                  onClick={handleReset}
-                  disabled={!input.trim()}
-                  className="text-[#C8102E] hover:text-[#9B0C23] disabled:text-[#C9D6D0] disabled:cursor-not-allowed font-semibold flex items-center gap-1"
-                >
-                  <RefreshCw className="w-3 h-3" /> 초기화
-                </button>
-              </div>
+              <span className="text-xs text-[#8C9A93] tabular-nums">{Object.keys(schedule).length}일</span>
+            </div>
+
+            {/* 전체 텍스트 복사 · 공유 */}
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                onClick={handleCopy}
+                disabled={!input.trim()}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-[#F7F5EF] hover:bg-[#EDEAE1] disabled:opacity-45 disabled:cursor-not-allowed text-[#1E3932] font-semibold text-sm py-2.5 rounded-full border border-[#D4E9E2] transition-colors"
+              >
+                {copied
+                  ? <><Check className="w-4 h-4 text-[#00704A]" /> 복사됨</>
+                  : <><Copy className="w-4 h-4" /> 전체 복사</>}
+              </button>
+              <button
+                onClick={handleShareText}
+                disabled={!input.trim()}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-[#F7F5EF] hover:bg-[#EDEAE1] disabled:opacity-45 disabled:cursor-not-allowed text-[#1E3932] font-semibold text-sm py-2.5 rounded-full border border-[#D4E9E2] transition-colors"
+              >
+                <Share2 className="w-4 h-4" /> 문자로 공유
+              </button>
+              <button
+                onClick={handleReset}
+                disabled={!input.trim()}
+                aria-label="누적 스케줄 초기화"
+                title="초기화"
+                className="shrink-0 flex items-center justify-center w-10 h-10 rounded-full border border-[#F0D2D7] text-[#C8102E] hover:bg-[#FDF2F3] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
             </div>
             <textarea
               value={input}
