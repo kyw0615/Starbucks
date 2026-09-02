@@ -1,0 +1,43 @@
+{
+  "rules": {
+    "groups": {
+      "$gid": {
+        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+
+        "secret": {
+          ".write": "auth != null && (!data.exists() || root.child('groups').child($gid).child('members').child(auth.uid).exists())",
+          "code": { ".validate": "newData.isString() && newData.val().length >= 4" },
+          "$other": { ".validate": false }
+        },
+
+        "meta": {
+          ".write": "auth != null && (!data.exists() || root.child('groups').child($gid).child('members').child(auth.uid).exists())",
+          "name": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "createdAt": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
+
+        "schedule": {
+          ".write": "auth != null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
+          "text": { ".validate": "newData.isString() && newData.val().length <= 20000" },
+          "updatedAt": { ".validate": "newData.isNumber()" },
+          "updatedBy": { ".validate": "newData.isString()" },
+          "$other": { ".validate": false }
+        },
+
+        "members": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('groups').child($gid).child('members').child(auth.uid).exists())",
+            ".validate": "data.exists() || newData.child('code').val() === root.child('groups').child($gid).child('secret').child('code').val()",
+            "name": { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "joinedAt": { ".validate": "newData.isNumber()" },
+            "code": { ".validate": "newData.isString()" },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

@@ -1,6 +1,12 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Download, Share2, Calendar, Clock, Briefcase, Smartphone, RefreshCw, Copy, Check, Image as ImageIcon } from 'lucide-react';
+import { Download, Share2, Calendar, Clock, Briefcase, Smartphone, RefreshCw, Copy, Check, Users, Image as ImageIcon } from 'lucide-react';
 import { toBlob } from 'html-to-image';
+import GroupScreen from './GroupScreen';
+import { isFirebaseConfigured } from './firebaseConfig';
+import {
+  loadMembership, saveMembership, rejoin, subscribeSchedule, pushSchedule, currentUid,
+  type Membership,
+} from './sync';
 
 // 첫 방문 시 빈 상태로 시작한다 (예시 데이터 없음)
 const DEFAULT_INPUT = '';
@@ -681,6 +687,17 @@ export default function App() {
   const [downloading, setDownloading] = useState('');
   const [device, setDevice] = useState(getDeviceSize);
 
+  // ── 그룹 공유 ──
+  const [view, setView] = useState<'main' | 'group'>('main');
+  const [membership, setMembership] = useState<Membership | null>(loadMembership);
+  const [syncState, setSyncState] = useState<'off' | 'connecting' | 'live' | 'error'>(
+    isFirebaseConfigured && loadMembership() ? 'connecting' : 'off'
+  );
+  // 원격에서 받은 텍스트를 그대로 되돌려 쓰지 않도록 기억해 둔다 (메아리 방지)
+  const remoteEchoRef = useRef<string | null>(null);
+  // 첫 수신 전에는 로컬 내용을 올려보내지 않는다 (빈 값으로 덮어쓰기 방지)
+  const syncReadyRef = useRef(false);
+
   const posterRef = useRef<HTMLDivElement>(null);
   const widePosterRef = useRef<HTMLDivElement>(null);
 
@@ -715,6 +732,60 @@ export default function App() {
 
   // 입력 텍스트 → 파싱 → 달력에 실시간 반영 (별도 "적용" 단계 없음)
   const schedule = useMemo(() => parseSchedule(input), [input]);
+
+  // ── 그룹 실시간 동기화 ──
+  // 가입돼 있으면 앱을 여는 순간 자동으로 붙고, 이후 추가 동작 없이 계속 이어진다.
+  useEffect(() => {
+    if (!isFirebaseConfigured || !membership) {
+      syncReadyRef.current = false;
+      return;
+    }
+
+    let cancelled = false;
+    let off: (() => void) | null = null;
+
+    (async () => {
+      try {
+        // uid가 바뀐 기기(저장소 초기화 등)에서도 멤버 등록을 갱신해 다시 붙는다
+        await rejoin(membership);
+        if (cancelled) return;
+
+        off = subscribeSchedule(
+          membership.groupId,
+          remote => {
+            if (cancelled) return;
+            syncReadyRef.current = true;
+            setSyncState('live');
+            if (!remote) return;
+            // 내가 방금 올린 내용이 되돌아온 것은 무시
+            if (remote.updatedBy && remote.updatedBy === currentUid()) return;
+            remoteEchoRef.current = remote.text;
+            setInput(remote.text);
+          },
+          () => { if (!cancelled) setSyncState('error'); }
+        );
+      } catch {
+        if (!cancelled) setSyncState('error');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (off) off();
+      syncReadyRef.current = false;
+    };
+  }, [membership]);
+
+  // 로컬 변경을 그룹에 올린다 (자동 저장과 같은 리듬으로 디바운스)
+  useEffect(() => {
+    if (!isFirebaseConfigured || !membership || !syncReadyRef.current) return;
+    // 방금 원격에서 받은 내용이면 다시 올리지 않는다
+    if (remoteEchoRef.current === input) return;
+    const id = setTimeout(() => {
+      pushSchedule(membership.groupId, input).catch(() => setSyncState('error'));
+    }, 600);
+    return () => clearTimeout(id);
+  }, [input, membership]);
 
   // 입력이 바뀔 때마다 localStorage에 자동 저장 (400ms 디바운스)
   useEffect(() => {
@@ -756,6 +827,21 @@ export default function App() {
     const parts = focusMonths.map(m => `${m.year}${pad2(m.month + 1)}`);
     return `schedule-${parts.join('-')}`;
   }, [focusMonths]);
+
+  // 그룹 가입 완료 — 즉시 동기화를 시작하고 달력으로 돌아간다
+  const handleJoined = (m: Membership) => {
+    setMembership(m);
+    setSyncState('connecting');
+    setView('main');
+  };
+
+  // 그룹 탈퇴 — 로컬 스케줄은 그대로 두고 동기화만 끊는다
+  const handleLeft = () => {
+    saveMembership(null);
+    setMembership(null);
+    setSyncState('off');
+    setView('main');
+  };
 
   // 자동 정리 되돌리기 — 정리 직전 텍스트로 복원
   const handleUndoPrune = () => {
@@ -881,6 +967,17 @@ export default function App() {
     [device.width, device.height, dateCells.length]
   );
 
+  if (view === 'group') {
+    return (
+      <GroupScreen
+        membership={membership}
+        onJoined={handleJoined}
+        onLeft={handleLeft}
+        onBack={() => setView('main')}
+      />
+    );
+  }
+
   return (
     // 화면 전체를 세로로 나눠, 헤더는 고정하고 그 아래 영역만 스크롤한다
     <div className="h-[100dvh] flex flex-col bg-[#F7F5EF] overflow-hidden">
@@ -889,6 +986,20 @@ export default function App() {
         <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center gap-2.5">
           <Calendar className="w-[18px] h-[18px] shrink-0 opacity-90" />
           <h1 className="text-[15px] font-bold tracking-tight">스케줄 달력</h1>
+          {membership && (
+            <span className="ml-auto flex items-center gap-1.5 text-[11px] font-semibold">
+              <span
+                className={
+                  'w-1.5 h-1.5 rounded-full ' +
+                  (syncState === 'live' ? 'bg-[#8FE3C4]'
+                    : syncState === 'error' ? 'bg-[#FFB4A2]' : 'bg-white/50')
+                }
+              />
+              <span className="opacity-90 max-w-[9rem] truncate">
+                {syncState === 'error' ? '동기화 오류' : membership.groupName}
+              </span>
+            </span>
+          )}
         </div>
       </header>
 
@@ -1094,6 +1205,31 @@ export default function App() {
                 공유 시트가 열리면 [이미지 저장]으로 사진첩에 넣을 수 있습니다.
               </p>
             )}
+          </section>
+
+          {/* 6) 그룹 관리 — 최하단 */}
+          <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
+            <h2 className="font-bold text-[#1E3932] mb-1">그룹 공유</h2>
+            <p className="text-[11px] text-[#8C9A93] mb-3 leading-relaxed">
+              {membership
+                ? `"${membership.groupName}" 그룹과 스케줄이 자동으로 동기화됩니다. 한쪽에서 고치면 다른 쪽에도 바로 반영됩니다.`
+                : '그룹을 만들어 초대 코드를 보내면, 친구와 같은 스케줄을 실시간으로 함께 볼 수 있습니다.'}
+            </p>
+            <button
+              onClick={() => setView('group')}
+              className="w-full flex items-center justify-between bg-white hover:bg-[#F7F5EF] text-[#00704A] font-bold py-3 px-4 rounded-full border-2 border-[#00704A] transition-colors"
+            >
+              <span className="flex items-center gap-2 text-left">
+                <Users className="w-4 h-4 shrink-0" />
+                <span>
+                  그룹 관리
+                  <span className="block text-[11px] font-normal opacity-75">
+                    {membership ? `${membership.groupName} · 동기화 중` : '그룹 만들기 · 들어가기'}
+                  </span>
+                </span>
+              </span>
+              <span className="text-[#8C9A93] text-lg leading-none">›</span>
+            </button>
           </section>
         </div>
         </div>

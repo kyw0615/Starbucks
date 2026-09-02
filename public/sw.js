@@ -1,7 +1,7 @@
 // 오프라인 지원용 최소 서비스 워커.
 // 빌드 산출물 파일명에 해시가 붙으므로 목록을 미리 적지 않고,
 // 실제 요청된 리소스를 런타임에 캐시한다(stale-while-revalidate).
-const CACHE = 'sbux-schedule-v1';
+const CACHE = 'sbux-schedule-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
