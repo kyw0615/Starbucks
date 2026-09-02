@@ -10,7 +10,10 @@ import {
 
 type Props = {
   membership: Membership | null;
+  /** 새로 가입/생성했을 때 — 달력 화면으로 돌아간다 */
   onJoined: (m: Membership) => void;
+  /** 코드 재발급 등 가입 정보만 바뀌었을 때 — 화면은 그대로 둔다 */
+  onMembershipChange: (m: Membership) => void;
   onLeft: () => void;
   onBack: () => void;
 };
@@ -26,7 +29,7 @@ const ghostBtn =
   'w-full flex items-center justify-center gap-2 bg-white hover:bg-[#F7F5EF] disabled:opacity-45 ' +
   'disabled:cursor-not-allowed text-[#00704A] font-bold py-3 rounded-full border-2 border-[#00704A] transition-colors';
 
-export default function GroupScreen({ membership, onJoined, onLeft, onBack }: Props) {
+export default function GroupScreen({ membership, onJoined, onMembershipChange, onLeft, onBack }: Props) {
   const [members, setMembers] = useState<Member[]>([]);
   const [myUid, setMyUid] = useState<string | null>(currentUid());
   const [busy, setBusy] = useState('');
@@ -62,10 +65,10 @@ export default function GroupScreen({ membership, onJoined, onLeft, onBack }: Pr
       if (cancelled || !code || code === membership.code) return;
       const next = { ...membership, code };
       saveMembership(next);
-      onJoined(next);
+      onMembershipChange(next);
     });
     return () => { cancelled = true; };
-  }, [membership, onJoined]);
+  }, [membership, onMembershipChange]);
 
   const invite = membership ? makeInvite(membership.groupId, membership.code) : '';
 
@@ -121,7 +124,7 @@ export default function GroupScreen({ membership, onJoined, onLeft, onBack }: Pr
     if (!ok) return;
     run('remove:' + m.uid, async () => {
       const code = await removeMember(membership.groupId, m.uid);
-      onJoined({ ...membership, code });
+      onMembershipChange({ ...membership, code });
       setRotatedNote({ reason: 'removed', who: m.name });
     });
   };
@@ -137,7 +140,7 @@ export default function GroupScreen({ membership, onJoined, onLeft, onBack }: Pr
     if (!ok) return;
     run('rotate', async () => {
       const code = await rotateCode(membership.groupId);
-      onJoined({ ...membership, code });
+      onMembershipChange({ ...membership, code });
       setRotatedNote({ reason: 'manual' });
     });
   };

@@ -203,10 +203,39 @@ export async function rejoin(m: Membership): Promise<string> {
   return uid;
 }
 
-/** 그룹 탈퇴 — 내 멤버 기록만 지운다 */
+/**
+ * 그룹 탈퇴.
+ *
+ * 내가 마지막 멤버라면 그룹 데이터까지 함께 지운다.
+ * 멤버가 하나도 없는 그룹은 규칙상 아무도 읽거나 지울 수 없어
+ * 영구히 남는 찌꺼기가 되기 때문이다.
+ * 내 멤버 기록을 지우면 권한을 잃으므로 순서가 중요하다 — 데이터를 먼저 지운다.
+ */
 export async function leaveGroup(groupId: string): Promise<void> {
   const { db, fdb } = await mods();
   const uid = await ensureSignedIn();
+
+  let isLastMember = false;
+  try {
+    const snap = await fdb.get(fdb.ref(db, `groups/${groupId}/members`));
+    const val = snap.val() || {};
+    const others = Object.keys(val).filter(k => k !== uid);
+    isLastMember = others.length === 0;
+  } catch {
+    /* 확인 못 하면 그냥 내 기록만 지운다 */
+  }
+
+  if (isLastMember) {
+    // 권한이 있는 동안 그룹 본체를 먼저 정리한다
+    for (const path of ['schedule', 'meta', 'secret']) {
+      try {
+        await fdb.remove(fdb.ref(db, `groups/${groupId}/${path}`));
+      } catch {
+        /* 일부가 실패해도 탈퇴 자체는 진행한다 */
+      }
+    }
+  }
+
   await fdb.remove(fdb.ref(db, `groups/${groupId}/members/${uid}`));
   saveMembership(null);
 }

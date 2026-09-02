@@ -695,8 +695,9 @@ export default function App() {
   );
   // 원격에서 받은 텍스트를 그대로 되돌려 쓰지 않도록 기억해 둔다 (메아리 방지)
   const remoteEchoRef = useRef<string | null>(null);
-  // 첫 수신 전에는 로컬 내용을 올려보내지 않는다 (빈 값으로 덮어쓰기 방지)
-  const syncReadyRef = useRef(false);
+  // 첫 수신 전에는 로컬 내용을 올려보내지 않는다 (빈 값으로 덮어쓰기 방지).
+  // ref가 아니라 state여야 준비된 시점에 업로드 effect가 다시 실행된다.
+  const [syncReady, setSyncReady] = useState(false);
 
   const posterRef = useRef<HTMLDivElement>(null);
   const widePosterRef = useRef<HTMLDivElement>(null);
@@ -737,7 +738,6 @@ export default function App() {
   // 가입돼 있으면 앱을 여는 순간 자동으로 붙고, 이후 추가 동작 없이 계속 이어진다.
   useEffect(() => {
     if (!isFirebaseConfigured || !membership) {
-      syncReadyRef.current = false;
       return;
     }
 
@@ -754,7 +754,7 @@ export default function App() {
           membership.groupId,
           remote => {
             if (cancelled) return;
-            syncReadyRef.current = true;
+            setSyncReady(true);
             setSyncState('live');
             if (!remote) return;
             // 내가 방금 올린 내용이 되돌아온 것은 무시
@@ -772,20 +772,20 @@ export default function App() {
     return () => {
       cancelled = true;
       if (off) off();
-      syncReadyRef.current = false;
+      setSyncReady(false);
     };
   }, [membership]);
 
   // 로컬 변경을 그룹에 올린다 (자동 저장과 같은 리듬으로 디바운스)
   useEffect(() => {
-    if (!isFirebaseConfigured || !membership || !syncReadyRef.current) return;
+    if (!isFirebaseConfigured || !membership || !syncReady) return;
     // 방금 원격에서 받은 내용이면 다시 올리지 않는다
     if (remoteEchoRef.current === input) return;
     const id = setTimeout(() => {
       pushSchedule(membership.groupId, input).catch(() => setSyncState('error'));
     }, 600);
     return () => clearTimeout(id);
-  }, [input, membership]);
+  }, [input, membership, syncReady]);
 
   // 입력이 바뀔 때마다 localStorage에 자동 저장 (400ms 디바운스)
   useEffect(() => {
@@ -833,6 +833,12 @@ export default function App() {
     setMembership(m);
     setSyncState('connecting');
     setView('main');
+  };
+
+  // 가입 정보만 갱신 (코드 재발급 등) — 화면은 그대로 둔다
+  const handleMembershipChange = (m: Membership) => {
+    saveMembership(m);
+    setMembership(m);
   };
 
   // 그룹 탈퇴 — 로컬 스케줄은 그대로 두고 동기화만 끊는다
@@ -972,6 +978,7 @@ export default function App() {
       <GroupScreen
         membership={membership}
         onJoined={handleJoined}
+        onMembershipChange={handleMembershipChange}
         onLeft={handleLeft}
         onBack={() => setView('main')}
       />
