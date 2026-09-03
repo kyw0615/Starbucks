@@ -715,17 +715,38 @@ export default function App() {
 
   const wideWidth = Math.round(device.width * SHORTCUT_WIDTH_RATIO);
 
-  // 미리보기 컨테이너의 실제 폭 (프레임 없이 화면에 꽉 채우기 위해 측정)
+  // 미리보기 컨테이너의 실제 폭 (프레임 없이 화면에 꽉 채우기 위해 측정).
+  //
+  // 그룹 화면을 다녀오면 이 div가 새로 만들어지므로, 관찰 대상을 다시 붙여야 한다.
+  // 예전에는 의존성이 비어 있어 관찰자가 떨어져 나간 옛 노드에 남았고,
+  // Safari는 그 노드가 DOM에서 빠질 때 폭 0을 통보해 값이 0으로 굳었다.
+  // 그 결과 돌아왔을 때 달력이 사라지고 앱을 다시 켜야 복구됐다.
   const previewBoxRef = useRef<HTMLDivElement>(null);
   const [previewBoxW, setPreviewBoxW] = useState(0);
   useEffect(() => {
+    if (view !== 'main') return;
     const el = previewBoxRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setPreviewBoxW(e.contentRect.width));
+
+    // 폭 0은 화면에서 빠졌거나 아직 배치 전이라는 뜻이므로 반영하지 않는다.
+    // 멀쩡한 측정값을 0으로 덮어쓰면 달력이 사라진 채로 남는다.
+    const apply = (w: number) => { if (w > 0) setPreviewBoxW(w); };
+
+    const ro = new ResizeObserver(([e]) => apply(e.contentRect.width));
     ro.observe(el);
-    setPreviewBoxW(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
+    apply(el.getBoundingClientRect().width);
+
+    // ResizeObserver가 놓치는 경우를 대비한 보조 측정
+    const onResize = () => apply(el.getBoundingClientRect().width);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, [view]);
 
   // 공유 시트로 사진 앱에 저장 가능한 환경인지 (주로 모바일)
   const canShare = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
