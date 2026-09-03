@@ -853,8 +853,32 @@ export default function App() {
   const handleJoined = (m: Membership) => {
     setMembership(m);
     setSyncState('connecting');
-    setView('main');
+    closeGroup();
   };
+
+  // 그룹 화면을 히스토리 항목으로 쌓는다.
+  // 아이폰 PWA에는 사파리 뒤로가기 제스처가 없어 화면 안에서 스와이프를 직접 처리하지만,
+  // 맥 사파리의 두 손가락 스와이프와 브라우저 뒤로가기 버튼은 이 항목으로 동작한다.
+  const openGroup = () => {
+    setView('group');
+    try {
+      window.history.pushState({ appView: 'group' }, '');
+    } catch {
+      /* 히스토리를 못 쓰는 환경이면 화면 전환만 한다 */
+    }
+  };
+
+  // 뒤로가기는 항상 히스토리를 통해 처리해 상태가 어긋나지 않게 한다
+  const closeGroup = () => {
+    if (window.history.state?.appView === 'group') window.history.back();
+    else setView('main');
+  };
+
+  useEffect(() => {
+    const onPop = () => setView('main');
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   // 가입 정보만 갱신 (코드 재발급 등) — 화면은 그대로 둔다
   const handleMembershipChange = (m: Membership) => {
@@ -867,7 +891,7 @@ export default function App() {
     saveMembership(null);
     setMembership(null);
     setSyncState('off');
-    setView('main');
+    closeGroup();
   };
 
   // 자동 정리 되돌리기 — 정리 직전 텍스트로 복원
@@ -1001,7 +1025,7 @@ export default function App() {
         onJoined={handleJoined}
         onMembershipChange={handleMembershipChange}
         onLeft={handleLeft}
-        onBack={() => setView('main')}
+        onBack={closeGroup}
       />
     );
   }
@@ -1244,7 +1268,7 @@ export default function App() {
                 : '그룹을 만들어 초대 코드를 보내면, 친구와 같은 스케줄을 실시간으로 함께 볼 수 있습니다.'}
             </p>
             <button
-              onClick={() => setView('group')}
+              onClick={openGroup}
               className="w-full flex items-center justify-between bg-white hover:bg-[#F7F5EF] text-[#00704A] font-bold py-3 px-4 rounded-full border-2 border-[#00704A] transition-colors"
             >
               <span className="flex items-center gap-2 text-left">

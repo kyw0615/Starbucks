@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Users, Copy, Check, LogOut, UserMinus, Plus, LogIn, Share2, KeyRound, ShieldAlert } from 'lucide-react';
 import { isFirebaseConfigured } from './firebaseConfig';
 import {
@@ -29,6 +29,13 @@ const ghostBtn =
   'w-full flex items-center justify-center gap-2 bg-white hover:bg-[#F7F5EF] disabled:opacity-45 ' +
   'disabled:cursor-not-allowed text-[#00704A] font-bold py-3 rounded-full border-2 border-[#00704A] transition-colors';
 
+// 왼쪽 가장자리에서 시작해야 뒤로가기로 인정하는 폭
+const EDGE_ZONE = 30;
+// 이 비율 넘게 끌면 뒤로가기 확정
+const COMPLETE_RATIO = 0.3;
+// 짧게 튕겨도 넘어가도록 하는 속도 임계 (px/ms)
+const FLICK_VELOCITY = 0.4;
+
 export default function GroupScreen({ membership, onJoined, onMembershipChange, onLeft, onBack }: Props) {
   const [members, setMembers] = useState<Member[]>([]);
   const [myUid, setMyUid] = useState<string | null>(currentUid());
@@ -42,6 +49,98 @@ export default function GroupScreen({ membership, onJoined, onMembershipChange, 
   const [myName, setMyName] = useState('');
   const [inviteInput, setInviteInput] = useState('');
   const [joinName, setJoinName] = useState('');
+
+  // ── 왼쪽 가장자리 스와이프로 뒤로가기 ──
+  // 홈 화면에 추가한 PWA(standalone)에는 사파리의 뒤로가기 제스처가 없어 직접 구현한다.
+  // 손가락을 따라 화면이 밀리고, 충분히 끌거나 튕기면 넘어간다.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  // onBack은 부모에서 매 렌더 새로 만들어진다. 이걸 의존성에 넣으면
+  // 끄는 도중 리스너가 교체되면서 제스처 상태(시작점)가 날아간다.
+  // 최신 콜백만 ref로 들고, 리스너는 마운트 때 한 번만 붙인다.
+  const onBackRef = useRef(onBack);
+  useEffect(() => { onBackRef.current = onBack; }, [onBack]);
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    let origin: { x: number; y: number; t: number } | null = null;
+    // none = 아직 판단 전, back = 뒤로가기, scroll = 세로 스크롤에 양보
+    let mode: 'none' | 'back' | 'scroll' = 'none';
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) { origin = null; return; }
+      const t = e.touches[0];
+      if (t.clientX > EDGE_ZONE) { origin = null; return; }
+      origin = { x: t.clientX, y: t.clientY, t: performance.now() };
+      mode = 'none';
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (!origin || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - origin.x;
+      const dy = t.clientY - origin.y;
+
+      // 가로/세로 중 어느 쪽 의도인지 먼저 가린다.
+      // 세로로 판단되면 스크롤을 그대로 두고 손을 뗀다.
+      if (mode === 'none') {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        mode = Math.abs(dx) > Math.abs(dy) ? 'back' : 'scroll';
+        if (mode === 'back') setDragging(true);
+      }
+      if (mode !== 'back') return;
+
+      e.preventDefault();            // 세로 스크롤이 같이 먹지 않도록
+      setDragX(Math.max(0, dx));
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (!origin || mode !== 'back') { origin = null; mode = 'none'; return; }
+      const t = e.changedTouches[0];
+      const dx = Math.max(0, t.clientX - origin.x);
+      const width = el.clientWidth || window.innerWidth || 1;
+      const speed = dx / Math.max(1, performance.now() - origin.t);
+
+      origin = null;
+      mode = 'none';
+      setDragging(false);
+
+      if (dx > width * COMPLETE_RATIO || speed > FLICK_VELOCITY) {
+        if (reduceMotion) { onBackRef.current(); return; }
+        // 끝까지 밀어낸 뒤 화면을 닫는다
+        setClosing(true);
+        setDragX(width);
+        window.setTimeout(() => onBackRef.current(), 200);
+      } else {
+        setDragX(0);               // 기준에 못 미치면 제자리로
+      }
+    };
+
+    const onCancel = () => {
+      origin = null;
+      mode = 'none';
+      setDragging(false);
+      setDragX(0);
+    };
+
+    // preventDefault를 쓰려면 passive여서는 안 된다
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd, { passive: true });
+    el.addEventListener('touchcancel', onCancel, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onCancel);
+    };
+  }, []);
 
   // 멤버 목록 실시간 구독 (구독 콜백에서만 상태를 갱신한다)
   useEffect(() => {
@@ -166,7 +265,17 @@ export default function GroupScreen({ membership, onJoined, onMembershipChange, 
   };
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-[#F7F5EF] overflow-hidden">
+    <div
+      ref={rootRef}
+      className="h-[100dvh] flex flex-col bg-[#F7F5EF] overflow-hidden"
+      style={{
+        transform: dragX ? `translateX(${dragX}px)` : undefined,
+        transition: dragging ? 'none' : 'transform .2s ease-out',
+        // 끌어낸 만큼 그림자로 아래 화면과의 층을 보여준다
+        boxShadow: dragX ? '-8px 0 24px rgba(30,57,50,.18)' : undefined,
+        willChange: dragging || closing ? 'transform' : undefined,
+      }}
+    >
       <header className="bg-[#00704A] text-white shrink-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center gap-2">
           <button
