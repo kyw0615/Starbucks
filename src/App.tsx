@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Download, Share2, Calendar, Clock, Briefcase, Smartphone, RefreshCw, Copy, Check, Users, Image as ImageIcon } from 'lucide-react';
+import { Download, Share2, Calendar, Clock, Briefcase, Smartphone, RefreshCw, Copy, Check, Users, ClipboardPaste, Image as ImageIcon } from 'lucide-react';
 import { toBlob } from 'html-to-image';
 import GroupScreen from './GroupScreen';
 import { isFirebaseConfigured } from './firebaseConfig';
@@ -680,6 +680,8 @@ export default function App() {
   const [weekInput, setWeekInput] = useState('');
   const [savedAt, setSavedAt] = useState('');
   const [copied, setCopied] = useState(false);
+  // 붙여넣기 결과 안내 (성공/실패 사유)
+  const [pasteMsg, setPasteMsg] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null);
   // 자동 정리 결과 안내 (되돌리기용 원본 보관)
   const [pruned, setPruned] = useState<{ count: number; before: string } | null>(
     boot.changed ? { count: boot.removed, before: boot.before } : null
@@ -955,6 +957,71 @@ export default function App() {
     if (ok) setInput('');
   };
 
+  /**
+   * 클립보드에서 스케줄 붙여넣기.
+   *
+   * iOS Safari는 사용자 제스처가 살아 있는 동안에만 클립보드 읽기를 허용한다.
+   * 그래서 이 핸들러 안에서는 readText() 앞에 await나 타이머를 두지 않고
+   * 동기 검사만 한 뒤 곧바로 호출한다. 제스처가 만료되면 권한 요청이 실패한다.
+   *
+   * 읽은 내용은 화면에만 반영하고 로그·저장소·분석에 남기지 않는다.
+   * 붙여넣은 텍스트에 민감한 정보가 섞여 있을 수 있기 때문이다.
+   */
+  const handlePasteFromClipboard = () => {
+    setPasteMsg(null);
+
+    // 여기까지는 모두 동기 검사라 사용자 제스처가 유지된다
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      setPasteMsg({
+        tone: 'warn',
+        text: '보안 연결(HTTPS)에서만 붙여넣기를 쓸 수 있습니다. 주소가 https로 시작하는지 확인해 주세요.',
+      });
+      return;
+    }
+    if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+      setPasteMsg({
+        tone: 'warn',
+        text: '이 브라우저는 붙여넣기 버튼을 지원하지 않습니다. 입력칸을 길게 눌러 붙여넣기를 선택해 주세요.',
+      });
+      return;
+    }
+
+    navigator.clipboard.readText().then(
+      text => {
+        if (!text || !text.trim()) {
+          setPasteMsg({
+            tone: 'warn',
+            text: '클립보드가 비어 있거나 붙여넣을 텍스트가 없습니다. 근무표를 먼저 복사해 주세요.',
+          });
+          return;
+        }
+        setWeekInput(text);
+        const days = Object.keys(parseSchedule(text)).length;
+        setPasteMsg({
+          tone: 'ok',
+          text: days > 0
+            ? `붙여넣었습니다. ${days}일치를 찾았습니다.`
+            : '붙여넣었습니다. 날짜를 찾지 못했으니 형식을 확인해 주세요.',
+        });
+      },
+      (err: unknown) => {
+        const name = (err as { name?: string })?.name;
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          // 자동으로 다시 요청하지 않는다. 사용자가 버튼을 누를 때만 재시도한다.
+          setPasteMsg({
+            tone: 'warn',
+            text: '클립보드 접근이 허용되지 않았습니다. 붙여넣기를 다시 누른 뒤 [허용]을 선택하거나, 입력칸을 길게 눌러 붙여넣어 주세요.',
+          });
+          return;
+        }
+        setPasteMsg({
+          tone: 'warn',
+          text: '클립보드를 읽지 못했습니다. 입력칸을 길게 눌러 붙여넣기를 선택해 주세요.',
+        });
+      }
+    );
+  };
+
   // 새 주간 스케줄을 기존 데이터 맨 아래에 이어붙임
   const handleAddWeek = () => {
     const chunk = weekInput.trim();
@@ -1093,17 +1160,38 @@ export default function App() {
 
           {/* 2) 스케줄 입력 */}
           <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
-            <label className="font-bold text-[#1E3932] flex items-center gap-2 mb-3">
-              <Briefcase className="w-4 h-4 text-[#00704A]" />
-              스케줄 입력
-            </label>
+            <div className="flex items-center justify-between mb-3">
+              <label className="font-bold text-[#1E3932] flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-[#00704A]" />
+                스케줄 입력
+              </label>
+              <button
+                onClick={handlePasteFromClipboard}
+                className="flex items-center gap-1.5 text-xs font-bold text-[#00704A] hover:text-[#006241] border border-[#D4E9E2] hover:bg-[#F7F5EF] rounded-full px-3 py-1.5 transition-colors"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" /> 붙여넣기
+              </button>
+            </div>
             <textarea
               value={weekInput}
-              onChange={e => setWeekInput(e.target.value)}
+              onChange={e => { setWeekInput(e.target.value); setPasteMsg(null); }}
               className="w-full h-40 p-3 bg-[#F7F5EF] border border-[#D4E9E2] rounded-xl font-mono text-base leading-relaxed text-[#1E3932] placeholder:text-[#8C9A93] focus:outline-none focus:ring-2 focus:ring-[#00704A] focus:border-transparent resize-none"
               placeholder={"근무표를 붙여넣으세요\n\n08/11(화)\n07:00\n14:00\n정상"}
               spellCheck={false}
             />
+            {pasteMsg && (
+              <p
+                role="status"
+                className={
+                  'mt-2 text-[12px] leading-relaxed rounded-lg px-3 py-2 border ' +
+                  (pasteMsg.tone === 'ok'
+                    ? 'text-[#1E3932] bg-[#F7F5EF] border-[#D4E9E2]'
+                    : 'text-[#8A4B1F] bg-[#FFF8E8] border-[#E8D9A8]')
+                }
+              >
+                {pasteMsg.text}
+              </p>
+            )}
             <button
               onClick={handleAddWeek}
               disabled={!weekInput.trim()}
