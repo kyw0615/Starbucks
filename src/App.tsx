@@ -43,7 +43,7 @@ function calcWorkMinutes(start: string, end: string): number {
   if (s == null || e == null) return 0;
   let diff = e - s;
   if (diff < 0) diff += 24 * 60;
-  if (diff < 8*60)
+  if (diff < 9*60)
     return Math.max(0, diff - BREAK_MINUTES);
   else
     return Math.max(0, diff - BREAK_MINUTES*2);
