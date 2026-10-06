@@ -1048,9 +1048,8 @@ export default function App() {
   return (
     // 화면 전체를 세로로 나눠, 헤더는 고정하고 그 아래 영역만 스크롤한다
     <div className="h-[100dvh] flex flex-col bg-[#F7F5EF] overflow-hidden">
-      {/* 상단 바 — 스크롤/바운스에 흔들리지 않는 고정 영역.
-          app-header: iOS 홈 화면 앱의 상단 흐림 띠를 피한다 (index.css) */}
-      <header className="app-header bg-[#00704A] text-white shrink-0 z-10">
+      {/* 상단 바 — 스크롤/바운스에 흔들리지 않는 고정 영역 */}
+      <header className="bg-[#00704A] text-white shrink-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center gap-2.5">
           <Calendar className="w-[18px] h-[18px] shrink-0 opacity-90" />
           <h1 className="text-[15px] font-bold tracking-tight">스케줄 달력</h1>
