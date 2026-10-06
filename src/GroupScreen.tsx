@@ -276,7 +276,7 @@ export default function GroupScreen({ membership, onJoined, onMembershipChange, 
         willChange: dragging || closing ? 'transform' : undefined,
       }}
     >
-      <header className="bg-[#00704A] text-white shrink-0 z-10">
+      <header className="app-header bg-[#00704A] text-white shrink-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center gap-2">
           <button
             onClick={onBack}

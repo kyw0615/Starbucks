@@ -1,6 +1,5 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
-import { Download, Share2, Calendar, Clock, Briefcase, Smartphone, RefreshCw, Copy, Check, Users, ClipboardPaste, Image as ImageIcon } from 'lucide-react';
-import { toBlob } from 'html-to-image';
+import { useState, useRef, useMemo, useEffect, type ReactNode } from 'react';
+import { Share2, Calendar, Clock, Briefcase, RefreshCw, Copy, Check, Users, ClipboardPaste } from 'lucide-react';
 import GroupScreen from './GroupScreen';
 import { isFirebaseConfigured } from './firebaseConfig';
 import {
@@ -11,7 +10,6 @@ import {
 // 첫 방문 시 빈 상태로 시작한다 (예시 데이터 없음)
 const DEFAULT_INPUT = '';
 
-const MONTH_NAMES_EN = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const dateKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 const parseKey = (k: string) => {
@@ -241,57 +239,50 @@ function getCalendarCells(schedule: Schedule): { cells: Date[]; months: FocusMon
   return { cells, months };
 }
 
-// =================== 캘린더 렌더 (배경화면용) ===================
-// 해상도 무관 — width/height를 받아 레이아웃을 비례 계산한다.
+// =================== 캘린더 렌더 ===================
+// 기기 해상도(물리 픽셀) 기준으로 그린 뒤 화면 폭에 맞춰 축소해 보여준다.
 // 기준 해상도 1206×2622 (iPhone 16 Pro) 대비 스케일로 폰트/여백을 조정.
-// 단축어(아이폰 배경화면 자동화)용 가로 확장 배율
-const SHORTCUT_WIDTH_RATIO = 1.4;
-// 단축어용 달력 글자 확대 배율 (전체화면 기준)
-const WIDE_TEXT_SCALE = 1.3;
 
-// 월 표시 블록 내부 줄 간격 (연도↔MONTH, MONTH↔부제)
-const MONTH_LINE_GAP_TOP = 8;
-const MONTH_LINE_GAP_BOTTOM = 6;
+// 월 표시 블록 내부 줄 간격 (연도↔월 숫자)
+const MONTH_LINE_GAP = 8;
 // 월 표시 블록 위/아래 바깥 여백 (포스터 픽셀 기준 고정값)
 const MONTH_BLOCK_MARGIN = 30;
+// 월 숫자와 오른쪽 메모 칸 사이 간격 (기준 해상도 픽셀)
+const MEMO_GAP = 36;
 
-// 웹 화면용 셀 높이 축소 비율. 다운로드는 배경화면이므로 화면을 꽉 채운다(1).
-const SCREEN_CELL_SHRINK = 0.76;
+// 셀 높이 축소 비율 — 기기 높이를 다 쓰면 칸이 너무 길어진다
+const CELL_SHRINK = 0.76;
 
-// 오늘 날짜 강조 — 웹 화면(screen)에서만 적용. 배경화면 이미지는 그대로 둔다.
+// 오늘 날짜 강조.
 // 테두리 + 연한 배경: 칸 안의 날짜색·시간 정보를 전혀 덮지 않으면서 눈에 들어온다.
 const TODAY_BG = '#E8F4EF';
 
 const BASE_W = 1206;
 const BASE_H = 2622;
 
-// screen = 웹페이지 표시용(달력 높이만큼만 차지, 아래 여백 없음)
-// full   = 다운로드 전체화면 배경화면 (기기 해상도를 꽉 채움)
-// wide   = 다운로드 단축어용 (가로 1.4배)
-type Variant = 'screen' | 'full' | 'wide';
-
 // 포스터 레이아웃 계산.
 // heightBasis = 셀 높이를 정하는 기준 높이(기기 세로 해상도).
-// screen 변형은 달력이 끝나는 지점까지만 사용하므로 posterHeight가 heightBasis보다 작다.
-function computeLayout(width: number, heightBasis: number, rows: number, variant: Variant) {
-  const isWide = variant === 'wide';
-  // 단축어용은 가로가 1.4배라 가로 기준 스케일이 과해지므로 세로 기준으로 억제한다
-  const s = isWide ? heightBasis / BASE_H : width / BASE_W;
+// 포스터는 달력이 끝나는 지점까지만 차지하므로 posterHeight가 heightBasis보다 작다.
+// minHeaderHeight = 월 표시 블록의 최소 높이 (오른쪽 메모 칸이 이보다 작아지지 않게)
+function computeLayout(width: number, heightBasis: number, rows: number, minHeaderHeight: number) {
+  const s = width / BASE_W;
 
   // 좌우/하단 여백
-  const padding = Math.round((isWide ? 44 : 60) * s);
+  const padding = Math.round(60 * s);
 
-  // 월 표시 블록(연도 / MONTH / 한글 부제)의 자체 높이 — 폰트 기준으로 딱 맞게 계산
-  const monthBigBase = isWide ? 96 : 132;
-  const monthSubBase = isWide ? 28 : 34;
-  const headerHeight = Math.round(
-    (monthSubBase + MONTH_LINE_GAP_TOP + monthBigBase + MONTH_LINE_GAP_BOTTOM + monthSubBase) * s
+  // 월 표시 블록(연도 / 월 숫자)의 높이 — 폰트 기준으로 딱 맞게 계산하되,
+  // 메모 칸에 필요한 높이가 더 크면 그쪽에 맞춘다
+  const monthBigBase = 132;
+  const monthSubBase = 34;
+  const headerHeight = Math.max(
+    Math.round((monthSubBase + MONTH_LINE_GAP + monthBigBase) * s),
+    Math.ceil(minHeaderHeight)
   );
 
   // 월 표시 블록 위/아래 간격 (고정 30px)
   const topPadding = MONTH_BLOCK_MARGIN;
   const headerGap = MONTH_BLOCK_MARGIN;
-  const weekdayBarHeight = Math.round((isWide ? 58 : 66) * s);
+  const weekdayBarHeight = Math.round(66 * s);
 
   const gridTop = topPadding + headerHeight + headerGap + weekdayBarHeight + Math.round(6 * s);
   const gridWidth = width - padding * 2;
@@ -299,17 +290,14 @@ function computeLayout(width: number, heightBasis: number, rows: number, variant
   const cellGap = Math.max(4, Math.round(8 * s));
   // 기기 높이를 다 쓴다고 가정했을 때의 셀 높이
   const availHeight = heightBasis - padding - gridTop;
-  const shrink = variant === 'screen' ? SCREEN_CELL_SHRINK : 1;
-  const cellHeight = ((availHeight - cellGap * (rows - 1)) / rows) * shrink;
+  const cellHeight = ((availHeight - cellGap * (rows - 1)) / rows) * CELL_SHRINK;
   const cellWidth = (gridWidth - cellGap * 6) / 7;
 
   // 그리드는 셀이 차지하는 만큼만 — 아래 남는 여백을 두지 않는다
   const gridHeight = cellHeight * rows + cellGap * (rows - 1);
 
-  // 웹 화면용은 달력이 끝나는 지점까지만, 다운로드는 기기 해상도 그대로
-  const posterHeight = variant === 'screen'
-    ? Math.round(gridTop + gridHeight + padding)
-    : heightBasis;
+  // 달력이 끝나는 지점까지만
+  const posterHeight = Math.round(gridTop + gridHeight + padding);
 
   // 기준 셀 148×418 대비 스케일
   const cs = Math.min(cellWidth / 148, cellHeight / 418);
@@ -318,54 +306,40 @@ function computeLayout(width: number, heightBasis: number, rows: number, variant
            gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth, cs, posterHeight };
 }
 
-// 웹페이지에 표시할 포스터의 높이 (달력 높이만큼)
-function screenPosterHeight(width: number, deviceHeight: number, rows: number) {
-  return computeLayout(width, deviceHeight, rows, 'screen').posterHeight;
-}
-
 type PosterProps = {
   schedule: Schedule;
   cells: Date[];
   months: FocusMonth[];
   width: number;
-  // 셀 높이 기준이 되는 기기 세로 해상도 (screen 변형도 이 값을 기준으로 계산)
+  // 셀 높이 기준이 되는 기기 세로 해상도
   height: number;
-  variant?: Variant;
+  // 월 숫자 오른쪽 빈 칸에 들어갈 메모 입력칸 (화면 픽셀 크기로 그린다)
+  memo: ReactNode;
+  // 화면 픽셀 / 포스터 픽셀 — 포스터 전체가 이 배율로 축소되어 보인다
+  uiScale: number;
+  // 월 표시 블록 최소 높이 (포스터 픽셀)
+  minHeaderHeight: number;
 };
 
-function CalendarPoster({ schedule, cells, months, width, height, variant = 'full' }: PosterProps) {
-  const isWide = variant === 'wide';
+function CalendarPoster({ schedule, cells, months, width, height, memo, uiScale, minHeaderHeight }: PosterProps) {
   const rows = cells.length / 7;
 
-  // 오늘 강조는 웹 화면에서만
   const todayRef = new Date();
   todayRef.setHours(0, 0, 0, 0);
-  const todayKey = variant === 'screen' ? dateKey(todayRef) : null;
+  const todayKey = dateKey(todayRef);
 
-  // 헤더 라벨: 단일/다중 월 자동 분기
+  // 헤더 라벨: 단일/다중 월 자동 분기 (예: 10 / 9 · 10)
   const headerYear = months[0]?.year ?? new Date().getFullYear();
-  const headerEn = months.length === 1
-    ? MONTH_NAMES_EN[months[0].month]
-    : months.map(m => MONTH_NAMES_EN[m.month]).join(' · ');
-  const headerKr = months.length === 1
-    ? `${months[0].month + 1}월 근무 일정`
-    : `${months[0].month + 1}월–${months[months.length - 1].month + 1}월 근무 일정`;
+  const headerMonth = months.map(m => m.month + 1).join(' · ');
 
-  const L = computeLayout(width, height, rows, variant);
+  const L = computeLayout(width, height, rows, minHeaderHeight);
   const { s, padding, topPadding, headerHeight, weekdayBarHeight, headerGap,
-          gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth, posterHeight } = L;
-
-  // 셀 글자 크기.
-  // 단축어용은 "전체화면 기준"의 정확히 WIDE_TEXT_SCALE배가 되도록 기준점을 맞춘다.
-  // (단축어용은 헤더가 작아 셀도 살짝 커지므로, 그 효과가 곱해지지 않도록 보정)
-  const cs = isWide
-    ? computeLayout(width / SHORTCUT_WIDTH_RATIO, height, rows, 'full').cs * WIDE_TEXT_SCALE
-    : L.cs;
+          gridTop, gridHeight, gridWidth, cellGap, cellHeight, cellWidth, cs, posterHeight } = L;
 
   const fs = {
-    monthBig: Math.round((isWide ? 96 : 132) * s),
-    monthSub: Math.round((isWide ? 28 : 34) * s),
-    weekday: Math.round((isWide ? 30 : 32) * s),
+    monthBig: Math.round(132 * s),
+    monthSub: Math.round(34 * s),
+    weekday: Math.round(32 * s),
     dayNum: Math.round(56 * cs),
     timeRow: Math.round(40 * cs),
     workHours: Math.round(30 * cs),
@@ -388,7 +362,7 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
         color: '#1f2937',
       }}
     >
-      {/* 헤더 — 연도 / MONTH / 한글 부제 (블록 위·아래 간격만 축소) */}
+      {/* 헤더 — 연도 / 월 숫자, 오른쪽 빈 공간 전체는 메모 칸 */}
       <div style={{
         position: 'absolute',
         top: `${topPadding}px`,
@@ -396,36 +370,46 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
         right: `${padding}px`,
         height: `${headerHeight}px`,
         display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-start',
+        alignItems: 'center',
+        gap: `${Math.round(MEMO_GAP * s)}px`,
       }}>
-        <div style={{
-          fontSize: `${fs.monthSub}px`,
-          lineHeight: 1,
-          color: SB.green,
-          fontWeight: 700,
-          letterSpacing: `${4 * s}px`,
-        }}>
-          {headerYear}
+        <div style={{ flexShrink: 0 }}>
+          <div style={{
+            fontSize: `${fs.monthSub}px`,
+            lineHeight: 1,
+            color: SB.green,
+            fontWeight: 700,
+            letterSpacing: `${4 * s}px`,
+          }}>
+            {headerYear}
+          </div>
+          <div style={{
+            fontSize: `${fs.monthBig}px`,
+            fontWeight: 800,
+            lineHeight: 1,
+            marginTop: `${MONTH_LINE_GAP * s}px`,
+            color: SB.deep,
+            letterSpacing: `${-2 * s}px`,
+            whiteSpace: 'nowrap',
+          }}>
+            {headerMonth}
+          </div>
         </div>
-        <div style={{
-          fontSize: `${fs.monthBig}px`,
-          fontWeight: 800,
-          lineHeight: 1,
-          marginTop: `${MONTH_LINE_GAP_TOP * s}px`,
-          color: SB.deep,
-          letterSpacing: `${-2 * s}px`,
-        }}>
-          {headerEn}
-        </div>
-        <div style={{
-          fontSize: `${fs.monthSub}px`,
-          lineHeight: 1,
-          color: SB.accent,
-          fontWeight: 600,
-          marginTop: `${MONTH_LINE_GAP_BOTTOM * s}px`,
-        }}>
-          {headerKr}
+
+        {/* 포스터는 통째로 축소되어 보이므로, 메모 칸은 그 배율을 되돌려 실제 화면 크기로 그린다.
+            (글자 크기를 스케줄 입력과 같은 16px로 맞추고, iOS의 입력 시 자동 확대도 피한다) */}
+        <div style={{ position: 'relative', flex: 1, minWidth: 0, alignSelf: 'stretch' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: `${uiScale * 100}%`,
+            height: `${uiScale * 100}%`,
+            transform: `scale(${1 / uiScale})`,
+            transformOrigin: 'top left',
+          }}>
+            {memo}
+          </div>
         </div>
       </div>
 
@@ -477,7 +461,7 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
           const inFocusMonth = months.some(
             m => m.year === date.getFullYear() && m.month === date.getMonth()
           );
-          const isToday = todayKey !== null && key === todayKey;
+          const isToday = key === todayKey;
 
           if (!inFocusMonth && !entry) {
             return (
@@ -644,6 +628,11 @@ function CalendarPoster({ schedule, cells, months, width, height, variant = 'ful
 
 // =================== 메인 앱 ===================
 const STORAGE_KEY = 'artifacts-schedule-input-v1';
+const MEMO_STORAGE_KEY = 'artifacts-schedule-memo-v1';
+
+// 메모 칸 최소 높이(화면 px) — 두 줄이 온전히 보이도록.
+// 스케줄 입력과 같은 글꼴: text-base(16px) × leading-relaxed(1.625) = 26px/줄, p-3 위아래 24px, 테두리 2px
+const MEMO_MIN_HEIGHT = 26 * 2 + 24 + 2;
 
 function loadInitialInput() {
   try {
@@ -651,6 +640,14 @@ function loadInitialInput() {
     return saved != null ? saved : DEFAULT_INPUT;
   } catch {
     return DEFAULT_INPUT;
+  }
+}
+
+function loadMemo() {
+  try {
+    return localStorage.getItem(MEMO_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
   }
 }
 
@@ -681,6 +678,7 @@ export default function App() {
   const [boot] = useState(loadAndPrune);
   const [input, setInput] = useState(boot.text);
   const [weekInput, setWeekInput] = useState('');
+  const [memo, setMemo] = useState(loadMemo);
   const [savedAt, setSavedAt] = useState('');
   const [copied, setCopied] = useState(false);
   // 붙여넣기 결과 안내 (성공/실패 사유)
@@ -689,7 +687,6 @@ export default function App() {
   const [pruned, setPruned] = useState<{ count: number; before: string } | null>(
     boot.changed ? { count: boot.removed, before: boot.before } : null
   );
-  const [downloading, setDownloading] = useState('');
   const [device, setDevice] = useState(getDeviceSize);
 
   // ── 그룹 공유 ──
@@ -704,9 +701,6 @@ export default function App() {
   // ref가 아니라 state여야 준비된 시점에 업로드 effect가 다시 실행된다.
   const [syncReady, setSyncReady] = useState(false);
 
-  const posterRef = useRef<HTMLDivElement>(null);
-  const widePosterRef = useRef<HTMLDivElement>(null);
-
   // 기기 회전/창 변경 시 해상도 재측정
   useEffect(() => {
     const onResize = () => setDevice(getDeviceSize());
@@ -717,8 +711,6 @@ export default function App() {
       window.removeEventListener('orientationchange', onResize);
     };
   }, []);
-
-  const wideWidth = Math.round(device.width * SHORTCUT_WIDTH_RATIO);
 
   // 미리보기 컨테이너의 실제 폭 (프레임 없이 화면에 꽉 채우기 위해 측정).
   //
@@ -752,10 +744,6 @@ export default function App() {
       window.removeEventListener('orientationchange', onResize);
     };
   }, [view]);
-
-  // 공유 시트로 사진 앱에 저장 가능한 환경인지 (주로 모바일)
-  const canShare = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
-    && navigator.canShare({ files: [new File([''], 'x.png', { type: 'image/png' })] });
 
   // 입력 텍스트 → 파싱 → 달력에 실시간 반영 (별도 "적용" 단계 없음)
   const schedule = useMemo(() => parseSchedule(input), [input]);
@@ -826,6 +814,15 @@ export default function App() {
     return () => clearTimeout(id);
   }, [input]);
 
+  // 메모는 고치는 즉시 저장한다 (저장 버튼 없음). 이 기기에만 남고 그룹과는 공유하지 않는다.
+  useEffect(() => {
+    try {
+      localStorage.setItem(MEMO_STORAGE_KEY, memo);
+    } catch {
+      /* 저장 불가(용량/프라이빗 모드) 시 무시 */
+    }
+  }, [memo]);
+
   const stats = useMemo(() => {
     let workDays = 0;
     let totalMins = 0;
@@ -846,13 +843,6 @@ export default function App() {
     () => getCalendarCells(schedule),
     [schedule]
   );
-
-  // 다운로드 파일명용 라벨
-  const fileLabel = useMemo(() => {
-    if (focusMonths.length === 0) return 'schedule';
-    const parts = focusMonths.map(m => `${m.year}${pad2(m.month + 1)}`);
-    return `schedule-${parts.join('-')}`;
-  }, [focusMonths]);
 
   // 그룹 가입 완료 — 즉시 동기화를 시작하고 달력으로 돌아간다
   const handleJoined = (m: Membership) => {
@@ -1033,59 +1023,14 @@ export default function App() {
     setWeekInput('');
   };
 
-  const handleDownload = async (variant: 'full' | 'wide') => {
-    const isWide = variant === 'wide';
-    const ref = isWide ? widePosterRef : posterRef;
-    if (!ref.current) return;
-    const w = isWide ? wideWidth : device.width;
-    const h = device.height;
-    const filename = `${fileLabel}${isWide ? '-wide' : ''}-${w}x${h}.png`;
-    setDownloading(variant);
-    try {
-      // skipFonts: 시스템 폰트 스택만 쓰므로 웹폰트 임베드 불필요.
-      // (임베드 단계는 스타일시트를 네트워크로 재요청해 수십 초씩 멈추는 원인이 됨)
-      const blob = await toBlob(ref.current, {
-        pixelRatio: 1,
-        width: w,
-        height: h,
-        skipFonts: true,
-      });
-      if (!blob) throw new Error('이미지 생성 실패');
-
-      // 모바일: 공유 시트로 사진 앱에 바로 저장 (iOS Safari는 다운로드가 '파일'로 가서 사진첩에 안 들어감)
-      const file = new File([blob], filename, { type: 'image/png' });
-      if (navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file] });
-          return;
-        } catch (err) {
-          // 사용자가 공유 시트를 닫은 경우 — 다운로드로 대체하지 않고 종료
-          if ((err as Error)?.name === 'AbortError') return;
-          // 그 외 오류는 아래 다운로드로 폴백
-        }
-      }
-
-      // 데스크탑 / 공유 미지원 브라우저: 일반 다운로드
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.download = filename;
-      link.href = url;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      alert('이미지 생성 중 오류가 발생했습니다.');
-    } finally {
-      setDownloading('');
-    }
-  };
-
-  // 미리보기는 감싸는 프레임 없이 컨테이너 폭에 꽉 차게 — 실제 폭을 측정해 배율 계산
+  // 달력은 감싸는 프레임 없이 컨테이너 폭에 꽉 차게 — 실제 폭을 측정해 배율 계산
   const previewScale = previewBoxW > 0 ? previewBoxW / device.width : 0;
-  // 웹 표시용 포스터 높이 (달력이 끝나는 지점까지 — 아래 빈 공간 없음)
+  // 메모 칸 최소 높이를 포스터 픽셀로 환산 (월 표시 블록이 이보다 낮아지지 않게)
+  const minHeaderHeight = previewScale > 0 ? MEMO_MIN_HEIGHT / previewScale : 0;
+  // 포스터 높이 (달력이 끝나는 지점까지 — 아래 빈 공간 없음)
   const screenH = useMemo(
-    () => screenPosterHeight(device.width, device.height, dateCells.length / 7),
-    [device.width, device.height, dateCells.length]
+    () => computeLayout(device.width, device.height, dateCells.length / 7, minHeaderHeight).posterHeight,
+    [device.width, device.height, dateCells.length, minHeaderHeight]
   );
 
   if (view === 'group') {
@@ -1103,8 +1048,9 @@ export default function App() {
   return (
     // 화면 전체를 세로로 나눠, 헤더는 고정하고 그 아래 영역만 스크롤한다
     <div className="h-[100dvh] flex flex-col bg-[#F7F5EF] overflow-hidden">
-      {/* 상단 바 — 스크롤/바운스에 흔들리지 않는 고정 영역 */}
-      <header className="bg-[#00704A] text-white shrink-0 z-10">
+      {/* 상단 바 — 스크롤/바운스에 흔들리지 않는 고정 영역.
+          app-header: iOS 홈 화면 앱의 상단 흐림 띠를 피한다 (index.css) */}
+      <header className="app-header bg-[#00704A] text-white shrink-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center gap-2.5">
           <Calendar className="w-[18px] h-[18px] shrink-0 opacity-90" />
           <h1 className="text-[15px] font-bold tracking-tight">스케줄 달력</h1>
@@ -1134,7 +1080,7 @@ export default function App() {
       >
       <div className="max-w-lg mx-auto pb-12">
 
-        {/* 1) 미리보기 — 최상단, 프레임 없이 화면에 꽉 차게 */}
+        {/* 1) 달력 — 최상단, 프레임 없이 화면에 꽉 차게 */}
         <div
           ref={previewBoxRef}
           className="w-full overflow-hidden"
@@ -1153,7 +1099,18 @@ export default function App() {
                 months={focusMonths}
                 width={device.width}
                 height={device.height}
-                variant="screen"
+                uiScale={previewScale}
+                minHeaderHeight={minHeaderHeight}
+                memo={
+                  <textarea
+                    value={memo}
+                    onChange={e => setMemo(e.target.value)}
+                    aria-label="메모"
+                    className="block w-full h-full p-3 bg-[#F7F5EF] border border-[#D4E9E2] rounded-xl font-mono text-base leading-relaxed text-[#1E3932] placeholder:text-[#8C9A93] focus:outline-none focus:ring-2 focus:ring-[#00704A] focus:border-transparent resize-none"
+                    placeholder="메모"
+                    spellCheck={false}
+                  />
+                }
               />
             </div>
           )}
@@ -1298,59 +1255,7 @@ export default function App() {
             </p>
           </section>
 
-          {/* 5) 배경화면 저장 — 최하단 */}
-          <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
-            <h2 className="font-bold text-[#1E3932] mb-1">배경화면으로 저장</h2>
-            <p className="text-[11px] text-[#8C9A93] mb-3">
-              위 달력을 이미지 파일로 내려받습니다. 앱에서 바로 보는 것으로 충분하다면 건너뛰어도 됩니다.
-            </p>
-            <div className="space-y-2.5">
-              <button
-                onClick={() => handleDownload('full')}
-                disabled={downloading !== ''}
-                className="w-full flex items-center justify-between bg-[#00704A] hover:bg-[#006241] disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-full transition-colors"
-              >
-                <span className="flex items-center gap-2 text-left">
-                  <Smartphone className="w-4 h-4 shrink-0" />
-                  <span>
-                    전체화면
-                    <span className="block text-[11px] font-normal opacity-85">
-                      {device.width}×{device.height} · 내 기기
-                    </span>
-                  </span>
-                </span>
-                {canShare ? <Share2 className="w-4 h-4 shrink-0" /> : <Download className="w-4 h-4 shrink-0" />}
-              </button>
-              <button
-                onClick={() => handleDownload('wide')}
-                disabled={downloading !== ''}
-                className="w-full flex items-center justify-between bg-white hover:bg-[#F7F5EF] disabled:opacity-50 disabled:cursor-not-allowed text-[#00704A] font-bold py-3 px-4 rounded-full border-2 border-[#00704A] transition-colors"
-              >
-                <span className="flex items-center gap-2 text-left">
-                  <ImageIcon className="w-4 h-4 shrink-0" />
-                  <span>
-                    단축어용 (가로 1.4배)
-                    <span className="block text-[11px] font-normal opacity-75">
-                      {wideWidth}×{device.height} · 확대 여백 포함
-                    </span>
-                  </span>
-                </span>
-                {canShare ? <Share2 className="w-4 h-4 shrink-0" /> : <Download className="w-4 h-4 shrink-0" />}
-              </button>
-            </div>
-            {downloading && (
-              <p className="text-xs text-[#00704A] mt-3 text-center font-semibold">
-                {downloading === 'wide' ? '단축어용' : '전체화면'} 이미지 생성 중...
-              </p>
-            )}
-            {canShare && (
-              <p className="text-[11px] text-[#8C9A93] mt-3 leading-relaxed">
-                공유 시트가 열리면 [이미지 저장]으로 사진첩에 넣을 수 있습니다.
-              </p>
-            )}
-          </section>
-
-          {/* 6) 그룹 관리 — 최하단 */}
+          {/* 5) 그룹 관리 — 최하단 */}
           <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
             <h2 className="font-bold text-[#1E3932] mb-1">그룹 공유</h2>
             <p className="text-[11px] text-[#8C9A93] mb-3 leading-relaxed">
@@ -1377,29 +1282,6 @@ export default function App() {
         </div>
         </div>
       </main>
-
-      {/* 숨겨진 렌더 영역 (다운로드용 원본 해상도) */}
-        <div style={{ position: 'fixed', left: '-99999px', top: 0, pointerEvents: 'none' }} aria-hidden="true">
-          <div ref={posterRef}>
-            <CalendarPoster
-              schedule={schedule}
-              cells={dateCells}
-              months={focusMonths}
-              width={device.width}
-              height={device.height}
-            />
-          </div>
-          <div ref={widePosterRef}>
-            <CalendarPoster
-              schedule={schedule}
-              cells={dateCells}
-              months={focusMonths}
-              width={wideWidth}
-              height={device.height}
-              variant="wide"
-            />
-          </div>
-        </div>
     </div>
   );
 }

@@ -24,3 +24,15 @@ body {
 body {
   font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
 }
+
+/* iOS 26부터 홈 화면에 추가한 앱은 상태 표시줄 바로 아래 약 38pt를 Liquid Glass 효과로 흐리게 덮는다.
+   meta 태그나 CSS로는 끌 수 없어서, 상단 바의 초록 배경만 그 띠까지 늘리고 글자는 띠 아래로 내린다.
+   단색 배경은 흐려져도 그대로 보인다.
+   (-webkit-touch-callout은 iOS·iPadOS에서만 지원 → 안드로이드 설치 앱이나 일반 브라우저에는 적용되지 않음) */
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    .app-header {
+      padding-top: calc(env(safe-area-inset-top, 0px) + 2.5rem);
+    }
+  }
+}
