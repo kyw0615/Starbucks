@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect, type ReactNode } from 'react';
-import { Share2, Calendar, Clock, Briefcase, RefreshCw, Copy, Check, Users, ClipboardPaste } from 'lucide-react';
+import { Share2, Calendar, Briefcase, RefreshCw, Copy, Check, Users, ClipboardPaste } from 'lucide-react';
 import GroupScreen from './GroupScreen';
 import { isFirebaseConfigured } from './firebaseConfig';
 import {
@@ -823,21 +823,6 @@ export default function App() {
     }
   }, [memo]);
 
-  const stats = useMemo(() => {
-    let workDays = 0;
-    let totalMins = 0;
-    // 출퇴근 시간이 있는 날만 근무일로 집계 (근태코드와 무관)
-    Object.values(schedule).forEach(e => {
-      if (e.start && e.end) {
-        workDays++;
-        totalMins += calcWorkMinutes(e.start, e.end);
-      }
-    });
-    const totalHours = (totalMins / 60).toFixed(1);
-    const avgHours = workDays > 0 ? (totalMins / 60 / workDays).toFixed(1) : '0.0';
-    return { workDays, totalHours, avgHours };
-  }, [schedule]);
-
   // 일정에 맞춰 셀 범위 자동 계산 (단일 월 = 전체, 다중 월 = 첫 주~끝 주만)
   const { cells: dateCells, months: focusMonths } = useMemo(
     () => getCalendarCells(schedule),
@@ -1163,36 +1148,7 @@ export default function App() {
             </p>
           </section>
 
-          {/* 3) 근무 요약 */}
-          <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
-            <h2 className="font-bold text-[#1E3932] mb-3 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[#00704A]" />
-              근무 요약
-            </h2>
-            <div className="grid grid-cols-3 gap-2.5">
-              <div className="bg-[#F7F5EF] rounded-xl p-3 text-center">
-                <div className="text-[11px] text-[#8C9A93] font-semibold">근무일</div>
-                <div className="text-2xl font-bold text-[#1E3932] mt-1 tabular-nums">
-                  {stats.workDays}<span className="text-xs text-[#8C9A93] ml-0.5">일</span>
-                </div>
-              </div>
-              <div className="bg-[#D4E9E2] rounded-xl p-3 text-center">
-                <div className="text-[11px] text-[#006241] font-semibold">총 시간</div>
-                <div className="text-2xl font-bold text-[#1E3932] mt-1 tabular-nums">
-                  {stats.totalHours}<span className="text-xs text-[#006241] ml-0.5">h</span>
-                </div>
-              </div>
-              <div className="bg-[#F7F5EF] rounded-xl p-3 text-center">
-                <div className="text-[11px] text-[#8C9A93] font-semibold">일 평균</div>
-                <div className="text-2xl font-bold text-[#1E3932] mt-1 tabular-nums">
-                  {stats.avgHours}<span className="text-xs text-[#8C9A93] ml-0.5">h</span>
-                </div>
-              </div>
-            </div>
-            <p className="text-[11px] text-[#8C9A93] mt-2.5">하루 30분 휴게시간을 뺀 값입니다.</p>
-          </section>
-
-          {/* 4) 누적 스케줄 */}
+          {/* 3) 누적 스케줄 */}
           <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-[#1E3932]">누적 스케줄</h2>
@@ -1254,7 +1210,7 @@ export default function App() {
             </p>
           </section>
 
-          {/* 5) 그룹 관리 — 최하단 */}
+          {/* 4) 그룹 관리 — 최하단 */}
           <section className="bg-white rounded-2xl border border-[#D4E9E2] shadow-sm p-5">
             <h2 className="font-bold text-[#1E3932] mb-1">그룹 공유</h2>
             <p className="text-[11px] text-[#8C9A93] mb-3 leading-relaxed">
