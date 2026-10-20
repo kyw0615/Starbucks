@@ -231,10 +231,11 @@ function getCalendarCells(schedule: Schedule): { cells: Date[]; months: FocusMon
     monthSet.add(`${today.getFullYear()}-${today.getMonth()}`);
   }
 
-  const months = Array.from(monthSet).sort().map(s => {
+  // 숫자로 정렬한다. 문자열 정렬은 "2026-10"(11월)을 "2026-9"(10월)보다 앞에 둔다.
+  const months = Array.from(monthSet).map(s => {
     const [y, m] = s.split('-').map(Number);
     return { year: y, month: m };
-  });
+  }).sort((a, b) => a.year - b.year || a.month - b.month);
 
   return { cells, months };
 }
